@@ -1,6 +1,6 @@
 # FastAPI currently resolves Starlette 0.48.x; API-level Range headers are blocked in app middleware.
 fastapi==0.120.0
-uvicorn[standard]==0.30.6
+uvicorn[standard]==0.42.0
 motor==3.6.0
 pydantic==2.9.2
 pydantic-settings==2.5.2
