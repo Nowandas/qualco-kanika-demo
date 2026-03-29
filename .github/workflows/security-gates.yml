@@ -174,7 +174,7 @@ jobs:
 
       - name: Upload Gitleaks SARIF
         if: always() && hashFiles('gitleaks.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gitleaks.sarif
 
@@ -230,13 +230,13 @@ jobs:
 
       - name: Upload Trivy vulnerability SARIF
         if: always() && hashFiles('trivy-vuln.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-vuln.sarif
 
       - name: Upload Trivy config SARIF
         if: always() && hashFiles('trivy-config.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-config.sarif
 
