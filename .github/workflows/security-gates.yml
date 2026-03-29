@@ -205,7 +205,7 @@ jobs:
       - name: Trivy filesystem vulnerability scan
         id: trivy_vuln
         continue-on-error: true
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: fs
           scan-ref: .
@@ -219,7 +219,7 @@ jobs:
       - name: Trivy configuration (IaC) scan
         id: trivy_config
         continue-on-error: true
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: config
           scan-ref: .
