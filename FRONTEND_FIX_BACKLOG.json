@@ -1,0 +1,275 @@
+{
+  "repo_name": "kanika-demo",
+  "generated_at": "2026-03-29",
+  "deployment_target": "frontend (Vite + React)",
+  "implemented": [
+    {
+      "id": "FESEC-001",
+      "title": "Strict API base URL validation and localhost guard",
+      "severity": "high",
+      "status": "done",
+      "target_files": [
+        "frontend/src/api/client.ts",
+        "frontend/Dockerfile",
+        ".github/workflows/security-gates.yml"
+      ],
+      "tests_or_checks": [
+        "npm run build --prefix frontend"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-003-A",
+      "title": "Scrub sensitive auth token query parameters",
+      "severity": "high",
+      "status": "done",
+      "target_files": [
+        "frontend/src/lib/url-security.ts",
+        "frontend/src/pages/login-page.tsx",
+        "frontend/src/pages/password-reset-page.tsx"
+      ],
+      "tests_or_checks": [
+        "frontend/tests/url-security.test.ts"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-003-B",
+      "title": "Remove reset token from visible UI",
+      "severity": "high",
+      "status": "done",
+      "target_files": [
+        "frontend/src/pages/password-reset-page.tsx"
+      ],
+      "tests_or_checks": [
+        "Manual UI check: reset token field is not rendered"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-004-A",
+      "title": "Frontend MIME safety policy for contract file open/download",
+      "severity": "high",
+      "status": "done",
+      "target_files": [
+        "frontend/src/lib/blob-safety.ts",
+        "frontend/src/pages/contracts-page.tsx",
+        "frontend/src/pages/contract-detail-page.tsx"
+      ],
+      "tests_or_checks": [
+        "frontend/tests/blob-safety.test.ts"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-005-A",
+      "title": "Static server browser-security header baseline",
+      "severity": "high",
+      "status": "done",
+      "target_files": [
+        "frontend/nginx.conf"
+      ],
+      "tests_or_checks": [
+        "Header inspection on container/static host responses"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-006",
+      "title": "Global API timeout baseline",
+      "severity": "medium",
+      "status": "done",
+      "target_files": [
+        "frontend/src/api/client.ts"
+      ],
+      "tests_or_checks": [
+        "Manual API latency test for timeout behavior"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-006-B",
+      "title": "Abort/cancellation guards in high-traffic loaders",
+      "severity": "medium",
+      "status": "done",
+      "target_files": [
+        "frontend/src/features/hospitality/use-contracts-explorer.ts",
+        "frontend/src/features/hospitality/use-price-list-calendar.ts",
+        "frontend/src/features/hospitality/use-reconciliations.ts",
+        "frontend/src/features/users/use-users-management.ts",
+        "frontend/src/features/invitations/use-invitations-management.ts",
+        "frontend/src/pages/contract-detail-page.tsx"
+      ],
+      "tests_or_checks": [
+        "npm run build --prefix frontend"
+      ],
+      "rollback_risk": "medium",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-007",
+      "title": "Sanitize backend error messages before rendering in UI",
+      "severity": "medium",
+      "status": "done",
+      "target_files": [
+        "frontend/src/lib/notify.tsx"
+      ],
+      "tests_or_checks": [
+        "Manual check: sensitive backend-like text is replaced with fallback"
+      ],
+      "rollback_risk": "medium",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-008",
+      "title": "Add global and route-level error boundaries",
+      "severity": "medium",
+      "status": "done",
+      "target_files": [
+        "frontend/src/main.tsx"
+      ],
+      "tests_or_checks": [
+        "Manual check: route/render exception yields controlled fallback"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-011-A",
+      "title": "Add explicit frontend build+test gate to CI",
+      "severity": "medium",
+      "status": "done",
+      "target_files": [
+        ".github/workflows/security-gates.yml"
+      ],
+      "tests_or_checks": [
+        "CI run confirms frontend build and test jobs execute"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "FESEC-012-A",
+      "title": "Reduce CSP friction by removing toaster inline container styles",
+      "severity": "medium",
+      "status": "done",
+      "target_files": [
+        "frontend/src/main.tsx",
+        "frontend/src/index.css"
+      ],
+      "tests_or_checks": [
+        "UI smoke check for toast placement"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    },
+    {
+      "id": "TEST-001",
+      "title": "Introduce targeted frontend hardening tests",
+      "severity": "medium",
+      "status": "done",
+      "target_files": [
+        "frontend/tests/url-security.test.ts",
+        "frontend/tests/blob-safety.test.ts",
+        "frontend/vitest.config.ts",
+        "frontend/package.json",
+        "frontend/package-lock.json"
+      ],
+      "tests_or_checks": [
+        "npm run test --prefix frontend"
+      ],
+      "rollback_risk": "low",
+      "safe_for_isolated_pr": true,
+      "backend_dependent": false
+    }
+  ],
+  "pending_pre_deploy": [
+    {
+      "id": "FESEC-002",
+      "title": "CSRF contract for cookie-auth mutating requests",
+      "severity": "high",
+      "status": "pending",
+      "owner": "frontend+backend",
+      "backend_dependent": true,
+      "safe_for_isolated_pr": false,
+      "required_for_release": true
+    },
+    {
+      "id": "FESEC-003-C",
+      "title": "Enforce token single-use and TTL replay protections",
+      "severity": "high",
+      "status": "pending",
+      "owner": "backend",
+      "backend_dependent": true,
+      "safe_for_isolated_pr": false,
+      "required_for_release": true
+    },
+    {
+      "id": "FESEC-004-B",
+      "title": "Backend file-serving MIME/content-disposition enforcement",
+      "severity": "high",
+      "status": "pending",
+      "owner": "backend",
+      "backend_dependent": true,
+      "safe_for_isolated_pr": false,
+      "required_for_release": true
+    },
+    {
+      "id": "FESEC-005-B",
+      "title": "Edge/CDN CSP enforcement and HSTS policy",
+      "severity": "high",
+      "status": "pending",
+      "owner": "infra",
+      "backend_dependent": true,
+      "safe_for_isolated_pr": false,
+      "required_for_release": true
+    },
+    {
+      "id": "FESEC-011-B",
+      "title": "Pin GitHub Actions to immutable commit SHAs",
+      "severity": "medium",
+      "status": "pending",
+      "owner": "platform",
+      "backend_dependent": false,
+      "safe_for_isolated_pr": true,
+      "required_for_release": true
+    }
+  ],
+  "pending_post_deploy": [
+    {
+      "id": "FESEC-012-B",
+      "title": "Refactor remaining inline styles to support strict CSP enforcement",
+      "severity": "medium",
+      "status": "pending",
+      "owner": "frontend",
+      "backend_dependent": false,
+      "safe_for_isolated_pr": true
+    },
+    {
+      "id": "FESEC-009",
+      "title": "Reduce external avatar metadata exposure",
+      "severity": "low",
+      "status": "pending",
+      "owner": "frontend+backend",
+      "backend_dependent": true,
+      "safe_for_isolated_pr": true
+    }
+  ]
+}

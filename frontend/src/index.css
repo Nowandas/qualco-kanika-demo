@@ -1,0 +1,73 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 203 30% 97%;
+  --foreground: 212 31% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 212 31% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 212 31% 15%;
+  --border: 210 24% 88%;
+  --input: 210 24% 88%;
+  --ring: 199 94% 48%;
+  --muted: 204 21% 94%;
+  --muted-foreground: 213 12% 42%;
+  --secondary: 204 21% 94%;
+  --secondary-foreground: 212 31% 15%;
+  --primary: 199 94% 48%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 204 21% 94%;
+  --accent-foreground: 212 31% 15%;
+  --destructive: 0 72% 52%;
+  --destructive-foreground: 0 0% 100%;
+  --danger: 0 72% 52%;
+  --radius: 1rem;
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 212 31% 15%;
+  --sidebar-primary: 199 94% 48%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 202 25% 92%;
+  --sidebar-accent-foreground: 212 31% 15%;
+  --sidebar-border: 210 24% 88%;
+  --sidebar-ring: 199 94% 48%;
+}
+
+* {
+  @apply border-border;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  background-image:
+    radial-gradient(circle at 8% -3%, rgba(0, 183, 255, 0.14), transparent 36%),
+    radial-gradient(circle at 92% 2%, rgba(20, 184, 166, 0.11), transparent 30%),
+    linear-gradient(180deg, rgba(246, 250, 255, 1) 0%, rgba(248, 251, 255, 1) 100%);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-content {
+  @apply mx-auto w-full max-w-[1320px];
+}
+
+.surface {
+  @apply rounded-2xl border border-border/80 bg-card shadow-sm;
+}
+
+.toaster-container {
+  top: 18px !important;
+  right: 18px !important;
+}

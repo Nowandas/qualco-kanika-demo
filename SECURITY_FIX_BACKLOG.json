@@ -1,0 +1,502 @@
+{
+  "repo_name": "kanika-demo",
+  "generated_date": "2026-03-28",
+  "source_artifacts": [
+    "README_SECURITY_HARDENING.md",
+    "SECURITY_AUDIT_REPORT.md",
+    "MACHINE_READABLE_SECURITY_PLAN.json",
+    "CHANGE_RECOMMENDATIONS.md"
+  ],
+  "policy": {
+    "no_optimization_before_must_fix": true,
+    "must_fix_ids": [
+      "SEC-001",
+      "SEC-002",
+      "SEC-003",
+      "SEC-004",
+      "SEC-005",
+      "SEC-006",
+      "SEC-007",
+      "SEC-008",
+      "SEC-009",
+      "SEC-010",
+      "SEC-012"
+    ],
+    "post_deploy_security_ids": [
+      "SEC-011"
+    ]
+  },
+  "dependencies": [
+    { "from": "SEC-001", "to": "SEC-007", "reason": "Credential baseline should be corrected before enabling abuse controls and lockout policies." },
+    { "from": "SEC-001", "to": "SEC-011", "reason": "Token lifecycle migration should not proceed while bootstrap account behavior is insecure." },
+    { "from": "SEC-002", "to": "SEC-007", "reason": "JWT policy baseline should be stabilized before auth traffic controls." },
+    { "from": "SEC-003", "to": "SEC-005", "reason": "Runtime hardening should use already-patched dependency stack." },
+    { "from": "SEC-010", "to": "SEC-005", "reason": "Frontend runtime profile should switch after toolchain CVE remediation." },
+    { "from": "SEC-005", "to": "SEC-006", "reason": "Session strategy and browser controls depend on final runtime/edge topology." },
+    { "from": "SEC-004", "to": "SEC-006", "reason": "Cookie/CORS policy should be finalized with known deployment network boundaries." },
+    { "from": "SEC-003", "to": "SEC-008", "reason": "Path/upload restrictions should align with parser guard implementation." },
+    { "from": "SEC-003", "to": "SEC-009", "reason": "Error sanitization should be validated alongside parser/dependency changes." }
+  ],
+  "batches": [
+    {
+      "batch_id": "B1",
+      "name": "Credentials and Startup Secret Policy",
+      "order": 1,
+      "depends_on_batches": [],
+      "category": "must_fix_security",
+      "items": [
+        {
+          "fix_id": "SEC-001",
+          "title": "Default admin credentials and startup password reset",
+          "target_files": [
+            "backend/app/domains/users/service.py",
+            "backend/app/core/config.py",
+            "frontend/src/config/app.ts",
+            "frontend/src/pages/login-page.tsx",
+            "docker-compose.yml",
+            "README.md"
+          ],
+          "implementation_order": 1,
+          "implementation_steps": [
+            "Remove default/admin credential constants from frontend and docs.",
+            "Stop startup password hash overwrite in master admin bootstrap.",
+            "Remove master admin default credential overrides from compose defaults."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_master_admin_bootstrap_behavior.py",
+            "frontend/src/pages/login-page.test.tsx"
+          ],
+          "rollback_risk": {
+            "level": "medium",
+            "notes": "Could break demo bootstrap expectations in local/dev.",
+            "rollback_plan": "Use temporary bootstrap feature flag for local/dev only while preserving secure production defaults."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Can be delivered in dedicated frontend/docs and backend bootstrap PRs."
+          },
+          "status": "completed_in_repo"
+        },
+        {
+          "fix_id": "SEC-002",
+          "title": "JWT secret strength and startup fail-fast",
+          "target_files": [
+            "backend/app/core/config.py",
+            "backend/app/core/security.py"
+          ],
+          "implementation_order": 2,
+          "implementation_steps": [
+            "Add strict JWT secret validation for non-local environments.",
+            "Enforce startup failure when default/weak secrets are detected.",
+            "Document secret rotation procedure."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_startup_config_guards.py",
+            "backend/tests/security/test_jwt_secret_policy.py"
+          ],
+          "rollback_risk": {
+            "level": "small",
+            "notes": "May block startup in previously permissive environments.",
+            "rollback_plan": "Temporarily run in local/dev mode only for emergency rollback; keep production block intact."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Pure backend policy change with focused test impact."
+          },
+          "status": "completed_in_repo"
+        }
+      ]
+    },
+    {
+      "batch_id": "B2",
+      "name": "Dependency CVE Remediation and Upload Guards",
+      "order": 2,
+      "depends_on_batches": ["B1"],
+      "category": "must_fix_security",
+      "items": [
+        {
+          "fix_id": "SEC-003",
+          "title": "Backend parser dependency and upload hardening",
+          "target_files": [
+            "backend/requirements.txt",
+            "backend/app/domains/hospitality/service.py"
+          ],
+          "implementation_order": 3,
+          "implementation_steps": [
+            "Upgrade vulnerable backend packages.",
+            "Add max upload size checks prior to full parsing.",
+            "Add parser failure handling paths with bounded resource behavior."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_upload_limits.py",
+            "backend/tests/security/test_parser_failure_resilience.py",
+            "backend/tests/security/test_upload_content_type_rejection.py"
+          ],
+          "rollback_risk": {
+            "level": "medium",
+            "notes": "Dependency compatibility and parser behavior regressions are possible.",
+            "rollback_plan": "Rollback to last known-good dependency lock snapshot and reintroduce upgrades incrementally."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Can be isolated to backend dependency and parser guard scope."
+          },
+          "status": "completed_in_repo"
+        },
+        {
+          "fix_id": "SEC-010",
+          "title": "Frontend toolchain advisory remediation",
+          "target_files": [
+            "frontend/package.json",
+            "frontend/package-lock.json"
+          ],
+          "implementation_order": 4,
+          "implementation_steps": [
+            "Upgrade Vite/toolchain dependency chain to patched versions.",
+            "Regenerate lockfile and verify build behavior.",
+            "Run npm audit with target threshold enforcement."
+          ],
+          "tests_to_add_or_update": [
+            "frontend build smoke in CI",
+            "npm audit threshold check in CI"
+          ],
+          "rollback_risk": {
+            "level": "medium",
+            "notes": "Toolchain major/minor upgrades can impact frontend build output.",
+            "rollback_plan": "Pin prior lockfile and re-upgrade with staged package updates."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Frontend-only dependency update can be isolated from backend behavior."
+          },
+          "status": "completed_in_repo"
+        }
+      ]
+    },
+    {
+      "batch_id": "B3",
+      "name": "File Path and Error Disclosure Controls",
+      "order": 3,
+      "depends_on_batches": ["B2"],
+      "category": "must_fix_security",
+      "items": [
+        {
+          "fix_id": "SEC-008",
+          "title": "Restrict path ingestion endpoints",
+          "target_files": [
+            "backend/app/domains/hospitality/service.py",
+            "backend/app/domains/hospitality/router.py"
+          ],
+          "implementation_order": 5,
+          "implementation_steps": [
+            "Disable path-ingestion endpoints in production mode or enforce allowlisted root.",
+            "Validate resolved path containment before reads.",
+            "Reject out-of-scope absolute and traversal paths."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_seed_path_allowlist.py",
+            "backend/tests/security/test_seed_path_traversal_rejection.py"
+          ],
+          "rollback_risk": {
+            "level": "medium",
+            "notes": "May break internal admin seed workflows.",
+            "rollback_plan": "Temporary feature flag to retain legacy behavior in controlled internal environments only."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Contained to hospitality file ingestion flows."
+          },
+          "status": "completed_in_repo"
+        },
+        {
+          "fix_id": "SEC-009",
+          "title": "Sanitize exception details in API responses",
+          "target_files": [
+            "backend/app/domains/hospitality/service.py",
+            "backend/app/domains/hospitality/router.py"
+          ],
+          "implementation_order": 6,
+          "implementation_steps": [
+            "Replace raw exception interpolation in HTTP responses.",
+            "Add server-side structured logging for internal error detail.",
+            "Introduce consistent error mapping helpers."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_error_response_sanitization.py"
+          ],
+          "rollback_risk": {
+            "level": "small",
+            "notes": "Low functional risk; mostly response shape/message changes.",
+            "rollback_plan": "Revert sanitization helper changes if client integrations require temporary compatibility."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Response handling change can be scoped and independently validated."
+          },
+          "status": "completed_in_repo"
+        }
+      ]
+    },
+    {
+      "batch_id": "B4",
+      "name": "Production Runtime and Data-Store Exposure Hardening",
+      "order": 4,
+      "depends_on_batches": ["B3"],
+      "category": "must_fix_security",
+      "items": [
+        {
+          "fix_id": "SEC-005",
+          "title": "Replace dev runtime with production container behavior",
+          "target_files": [
+            "backend/Dockerfile",
+            "frontend/Dockerfile",
+            "docker-compose.yml"
+          ],
+          "implementation_order": 7,
+          "implementation_steps": [
+            "Switch backend runtime to non-reload production command.",
+            "Build static frontend and serve from production server image.",
+            "Run containers as non-root users and remove source bind mounts in prod profile."
+          ],
+          "tests_to_add_or_update": [
+            "ops/tests/test_container_user_nonroot.sh",
+            "ops/tests/test_compose_prod_surface.sh"
+          ],
+          "rollback_risk": {
+            "level": "high",
+            "notes": "Deployment profile changes can impact startup, routing, and release behavior.",
+            "rollback_plan": "Maintain explicit dev/prod profiles and staged rollout with smoke checks."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Infra/deployment concern can be isolated in dedicated ops PR with staging verification."
+          },
+          "status": "completed_in_repo"
+        },
+        {
+          "fix_id": "SEC-004",
+          "title": "Secure MongoDB exposure and auth posture",
+          "target_files": [
+            "docker-compose.yml",
+            "backend/app/core/config.py",
+            "deployment runtime config"
+          ],
+          "implementation_order": 8,
+          "implementation_steps": [
+            "Remove public MongoDB host port exposure in production profile.",
+            "Require authenticated MongoDB URI and least-privilege credentials.",
+            "Apply network restrictions and TLS where supported."
+          ],
+          "tests_to_add_or_update": [
+            "staging network reachability test (external access denied)",
+            "DB auth negative test (unauthenticated access fails)"
+          ],
+          "rollback_risk": {
+            "level": "high",
+            "notes": "DB connectivity misconfiguration can cause service outage.",
+            "rollback_plan": "Keep controlled fallback profile for rapid recovery while preserving no-public-access constraint."
+          },
+          "isolated_pr": {
+            "safe": false,
+            "reason": "Requires coordinated infrastructure/runtime configuration validation."
+          },
+          "status": "completed_in_repo"
+        }
+      ]
+    },
+    {
+      "batch_id": "B5",
+      "name": "Auth Abuse Protection and Browser Session Hardening",
+      "order": 5,
+      "depends_on_batches": ["B4"],
+      "category": "must_fix_security",
+      "items": [
+        {
+          "fix_id": "SEC-007",
+          "title": "Rate limiting and lockout policy for sensitive endpoints",
+          "target_files": [
+            "backend/app/main.py",
+            "backend/app/domains/auth/router.py",
+            "backend/app/domains/auth/dependencies.py"
+          ],
+          "implementation_order": 9,
+          "implementation_steps": [
+            "Add IP and identity-based throttling on login and token-sensitive endpoints.",
+            "Implement lockout/backoff policy for repeated failed logins.",
+            "Add security event logging for abuse detection."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_auth_rate_limit.py",
+            "backend/tests/security/test_auth_lockout_policy.py"
+          ],
+          "rollback_risk": {
+            "level": "medium",
+            "notes": "Incorrect tuning can block legitimate users.",
+            "rollback_plan": "Feature-flag throttling thresholds and rollback to observability-only mode if required."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Can be delivered as backend-only behavior with focused tests."
+          },
+          "status": "completed_in_repo"
+        },
+        {
+          "fix_id": "SEC-006",
+          "title": "CORS, header policy, and session token strategy",
+          "target_files": [
+            "backend/app/main.py",
+            "frontend/src/api/client.ts",
+            "edge proxy config"
+          ],
+          "implementation_order": 10,
+          "implementation_steps": [
+            "Restrict CORS to explicit trusted origins.",
+            "Apply browser security headers at app/edge.",
+            "Migrate to secure cookie session strategy (or enforce temporary hardened bearer model with strict CSP)."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_cors_policy.py",
+            "integration tests for session cookie auth",
+            "e2e auth flow tests after token transport change"
+          ],
+          "rollback_risk": {
+            "level": "high",
+            "notes": "Session transport changes can break all authenticated frontend flows.",
+            "rollback_plan": "Dual-mode auth (cookie + bearer) behind feature flag during migration window."
+          },
+          "isolated_pr": {
+            "safe": false,
+            "reason": "Requires coordinated backend, frontend, and edge rollout to avoid auth downtime."
+          },
+          "status": "completed_in_repo"
+        }
+      ]
+    },
+    {
+      "batch_id": "B6",
+      "name": "CI/CD Security Gates",
+      "order": 6,
+      "depends_on_batches": ["B5"],
+      "category": "must_fix_security",
+      "items": [
+        {
+          "fix_id": "SEC-012",
+          "title": "Introduce security scanning and merge/deploy gates",
+          "target_files": [
+            ".github/workflows/*",
+            "security policy files"
+          ],
+          "implementation_order": 11,
+          "implementation_steps": [
+            "Add SAST, secret scanning, dependency audits, and container scans to CI.",
+            "Set fail thresholds for high/critical findings.",
+            "Enforce required checks in branch protection and deploy gating."
+          ],
+          "tests_to_add_or_update": [
+            "CI pipeline negative test using intentionally vulnerable fixture branch"
+          ],
+          "rollback_risk": {
+            "level": "small",
+            "notes": "Main risk is workflow friction from false positives.",
+            "rollback_plan": "Temporary warn mode while tuning policies, then return to blocking mode."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "CI policy and workflow changes can be isolated from app runtime behavior."
+          },
+          "status": "completed_in_repo"
+        }
+      ]
+    },
+    {
+      "batch_id": "B7",
+      "name": "Post-Deploy Token Lifecycle Hardening",
+      "order": 7,
+      "depends_on_batches": ["B6"],
+      "category": "must_fix_security_post_deploy",
+      "items": [
+        {
+          "fix_id": "SEC-011",
+          "title": "Hash reset/invitation tokens and reduce URL exposure",
+          "target_files": [
+            "backend/app/domains/password_resets/schemas.py",
+            "backend/app/domains/password_resets/service.py",
+            "backend/app/domains/password_resets/repository.py",
+            "backend/app/domains/invitations/schemas.py",
+            "backend/app/domains/invitations/service.py",
+            "backend/app/domains/invitations/repository.py",
+            "backend/app/domains/auth/router.py",
+            "frontend/src/pages/password-reset-page.tsx"
+          ],
+          "implementation_order": 12,
+          "implementation_steps": [
+            "Store hashed token values and migrate token lookup logic.",
+            "Reduce direct token echoing in APIs/UI.",
+            "Validate token redaction in logs and monitoring paths."
+          ],
+          "tests_to_add_or_update": [
+            "backend/tests/security/test_token_hash_storage.py",
+            "backend/tests/security/test_reset_token_single_use.py",
+            "integration tests for backward-compatible token migration"
+          ],
+          "rollback_risk": {
+            "level": "medium",
+            "notes": "Active token links may fail during migration if compatibility is not retained.",
+            "rollback_plan": "Temporary dual-lookup support for legacy tokens with short deprecation window."
+          },
+          "isolated_pr": {
+            "safe": true,
+            "reason": "Can be isolated if compatibility migration and tests are included in the same PR."
+          },
+          "status": "completed_in_repo"
+        }
+      ]
+    }
+  ],
+  "safe_refactors_after_must_fix": [
+    {
+      "id": "REF-001",
+      "title": "Decompose hospitality service module",
+      "target_files": ["backend/app/domains/hospitality/service.py"],
+      "depends_on": ["SEC-003", "SEC-008", "SEC-009"],
+      "isolated_pr_safe": true
+    },
+    {
+      "id": "REF-002",
+      "title": "Centralize error handling and security logging",
+      "target_files": ["backend/app/main.py", "backend/app/domains/*"],
+      "depends_on": ["SEC-009"],
+      "isolated_pr_safe": true
+    },
+    {
+      "id": "REF-003",
+      "title": "Introduce dedicated security config module",
+      "target_files": ["backend/app/core/config.py", "backend/app/main.py"],
+      "depends_on": ["SEC-001", "SEC-002"],
+      "isolated_pr_safe": true
+    }
+  ],
+  "optimization_opportunities_after_hardening": [
+    {
+      "id": "OPT-001",
+      "title": "Streamed upload ingestion and background parsing",
+      "depends_on": ["SEC-003", "SEC-008"],
+      "target_files": ["backend/app/domains/hospitality/service.py"],
+      "isolated_pr_safe": false
+    },
+    {
+      "id": "OPT-002",
+      "title": "Reconciliation/report query tuning and index review",
+      "depends_on": ["SEC-003", "SEC-004", "SEC-005"],
+      "target_files": ["backend/app/domains/hospitality/repository.py"],
+      "isolated_pr_safe": true
+    },
+    {
+      "id": "OPT-003",
+      "title": "Container/image size and startup optimization",
+      "depends_on": ["SEC-005"],
+      "target_files": ["backend/Dockerfile", "frontend/Dockerfile"],
+      "isolated_pr_safe": true
+    }
+  ]
+}

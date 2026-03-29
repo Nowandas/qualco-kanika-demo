@@ -1,0 +1,379 @@
+{
+  "repo_name": "kanika-demo",
+  "audit_date": "2026-03-28",
+  "deployment_readiness": "Not ready for deployment",
+  "summary": "Critical blockers exist in credential/bootstrap design, JWT secret handling, vulnerable upload dependencies, and deployment/runtime defaults. Production deployment should be blocked until Phase 1 controls are implemented and validated.",
+  "findings": [
+    {
+      "id": "SEC-001",
+      "title": "Default admin credentials exposed and re-applied at startup",
+      "severity": "critical",
+      "category": "auth",
+      "location": [
+        "backend/app/core/config.py:26",
+        "backend/app/core/config.py:27",
+        "backend/app/domains/users/service.py:74",
+        "backend/app/domains/users/service.py:93",
+        "frontend/src/config/app.ts:5",
+        "frontend/src/pages/login-page.tsx:19",
+        "frontend/src/pages/login-page.tsx:103",
+        "docker-compose.yml:29",
+        "docker-compose.yml:30",
+        "README.md:62"
+      ],
+      "description": "Known bootstrap admin credentials are present in code/docs/UI and startup logic rewrites master admin password hash on every boot.",
+      "impact": "Privilege compromise and credential-rotation bypass risk.",
+      "exploitability": "high",
+      "evidence": "Defaults and forced password_hash update are visible in settings/service code and runtime configuration.",
+      "recommended_fix": "Remove defaults from code/UI/docs, create one-time bootstrap flow, and stop rewriting admin password during startup.",
+      "fix_type": "code",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "App fails startup in non-local env when bootstrap credentials are default/weak.",
+        "Admin password change persists across restarts.",
+        "Login page no longer pre-fills or displays default admin credentials."
+      ]
+    },
+    {
+      "id": "SEC-002",
+      "title": "Weak JWT secret fallback without fail-fast guard",
+      "severity": "critical",
+      "category": "auth",
+      "location": [
+        "backend/app/core/config.py:22",
+        "backend/app/core/security.py:30",
+        "backend/app/domains/auth/dependencies.py:24"
+      ],
+      "description": "JWT secret defaults to a weak value and is accepted unless explicitly overridden.",
+      "impact": "Potential token forgery and privilege escalation in misconfigured deployments.",
+      "exploitability": "high",
+      "evidence": "Default `jwt_secret_key` plus direct use for encode/decode.",
+      "recommended_fix": "Require strong secret policy at startup, rotate keys, and invalidate old tokens.",
+      "fix_type": "code",
+      "estimated_effort": "small",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "Startup fails with weak secret in non-local env.",
+        "Old tokens are rejected after key rotation."
+      ]
+    },
+    {
+      "id": "SEC-003",
+      "title": "Upload parsing path includes known vulnerable packages and unbounded file reads",
+      "severity": "critical",
+      "category": "dependency",
+      "location": [
+        "backend/requirements.txt:9",
+        "backend/requirements.txt:10",
+        "backend/app/domains/hospitality/service.py:509",
+        "backend/app/domains/hospitality/service.py:749",
+        "backend/app/domains/hospitality/service.py:1049",
+        "backend/app/domains/hospitality/service.py:1132"
+      ],
+      "description": "`pip-audit` reports multiple CVEs in upload/parsing dependencies while endpoints read full files into memory before robust gating.",
+      "impact": "DoS/resource exhaustion and parser abuse risk.",
+      "exploitability": "high",
+      "evidence": "pip-audit: 25 vulnerabilities across 4 packages; repeated `await upload_file.read()` patterns.",
+      "recommended_fix": "Upgrade vulnerable packages and implement strict upload size/type limits plus parser hardening.",
+      "fix_type": "dependency",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "pip-audit returns no unresolved high/critical advisories in active path.",
+        "Oversized/malformed file uploads are rejected quickly and safely."
+      ]
+    },
+    {
+      "id": "SEC-004",
+      "title": "MongoDB network/auth exposure in compose defaults",
+      "severity": "high",
+      "category": "infra",
+      "location": [
+        "docker-compose.yml:8",
+        "docker-compose.yml:9",
+        "docker-compose.yml:27",
+        "backend/app/core/config.py:15"
+      ],
+      "description": "MongoDB is host-exposed and app URI uses no credentials in defaults.",
+      "impact": "Unauthorized database read/write risk if network exposure exists.",
+      "exploitability": "high",
+      "evidence": "Published port 27017 and non-authenticated URI defaults.",
+      "recommended_fix": "Enable Mongo auth/TLS, remove host port publication in production, and restrict network access.",
+      "fix_type": "infra",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": true,
+      "validation_steps": [
+        "External network cannot reach MongoDB service.",
+        "Unauthenticated DB connection attempts fail."
+      ]
+    },
+    {
+      "id": "SEC-005",
+      "title": "Deployment artifacts run development servers and root users",
+      "severity": "high",
+      "category": "infra",
+      "location": [
+        "backend/Dockerfile:17",
+        "frontend/Dockerfile:12",
+        "frontend/package.json:7",
+        "docker-compose.yml:34",
+        "docker-compose.yml:49"
+      ],
+      "description": "Runtime uses dev commands (`--reload`, Vite dev server) and bind mounts; containers do not set non-root user.",
+      "impact": "Expanded attack surface and unstable/non-hardened production behavior.",
+      "exploitability": "medium",
+      "evidence": "Docker and compose commands are development-oriented.",
+      "recommended_fix": "Switch to production build/runtime, remove source mounts in prod, and run as non-root.",
+      "fix_type": "infra",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "Container runs without reload/dev server in production profile.",
+        "Container user is non-root and filesystem is hardened."
+      ]
+    },
+    {
+      "id": "SEC-006",
+      "title": "Session token handling and CORS/header hardening gaps",
+      "severity": "high",
+      "category": "auth",
+      "location": [
+        "frontend/src/api/client.ts:12",
+        "frontend/src/api/client.ts:20",
+        "backend/app/main.py:50",
+        "backend/app/main.py:51",
+        "frontend/index.html:1"
+      ],
+      "description": "Bearer token is stored in localStorage; backend CORS is wide open and header hardening is not visible in app code.",
+      "impact": "Higher token theft/abuse risk in XSS or origin-misconfiguration scenarios.",
+      "exploitability": "medium",
+      "evidence": "localStorage token persistence and wildcard CORS configuration.",
+      "recommended_fix": "Prefer HttpOnly secure cookies or enforce strong CSP/XSS controls, and restrict CORS to trusted origins.",
+      "fix_type": "config",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": true,
+      "validation_steps": [
+        "CORS rejects unauthorized origins.",
+        "Security headers are present at edge/app.",
+        "Token cannot be read by arbitrary frontend JS when using cookie strategy."
+      ]
+    },
+    {
+      "id": "SEC-007",
+      "title": "Missing rate limiting on auth and token-sensitive endpoints",
+      "severity": "high",
+      "category": "auth",
+      "location": [
+        "backend/app/domains/auth/router.py:20",
+        "backend/app/domains/auth/router.py:55",
+        "backend/app/domains/auth/router.py:64",
+        "backend/app/main.py:46"
+      ],
+      "description": "No endpoint-level throttling/lockout controls are visible for login and reset/invitation workflows.",
+      "impact": "Credential stuffing, brute force, and abuse-driven DoS risk.",
+      "exploitability": "high",
+      "evidence": "No rate-limiter middleware/dependency in backend routes.",
+      "recommended_fix": "Add per-IP and per-identity throttling, login lockout/backoff, and abuse alerts.",
+      "fix_type": "runtime",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "Repeated failed login bursts trigger throttling and lockout.",
+        "Rate-limit events are logged and alerting is triggered."
+      ]
+    },
+    {
+      "id": "SEC-008",
+      "title": "Path ingestion endpoints permit arbitrary filesystem reads",
+      "severity": "high",
+      "category": "code",
+      "location": [
+        "backend/app/domains/hospitality/service.py:522",
+        "backend/app/domains/hospitality/service.py:525",
+        "backend/app/domains/hospitality/service.py:758",
+        "backend/app/domains/hospitality/service.py:761",
+        "backend/app/domains/hospitality/router.py:105",
+        "backend/app/domains/hospitality/router.py:230"
+      ],
+      "description": "Admin-provided paths are directly read from server filesystem and ingested.",
+      "impact": "Server-side sensitive file exfiltration if admin access is compromised.",
+      "exploitability": "medium",
+      "evidence": "`Path(path_value).read_bytes()` for request payload paths.",
+      "recommended_fix": "Disable in production or enforce strict allowlisted root path checks.",
+      "fix_type": "code",
+      "estimated_effort": "small",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "Out-of-scope absolute paths are rejected.",
+        "Only approved seed directory files are accepted."
+      ]
+    },
+    {
+      "id": "SEC-009",
+      "title": "Internal exception details are disclosed in API responses",
+      "severity": "medium",
+      "category": "code",
+      "location": [
+        "backend/app/domains/hospitality/service.py:2397",
+        "backend/app/domains/hospitality/service.py:2593",
+        "backend/app/domains/hospitality/service.py:2710",
+        "backend/app/domains/hospitality/service.py:5717",
+        "backend/app/domains/hospitality/service.py:6382",
+        "backend/app/domains/hospitality/router.py:277"
+      ],
+      "description": "HTTP error payloads include raw exception strings.",
+      "impact": "Information disclosure that helps attackers fingerprint internals and error paths.",
+      "exploitability": "medium",
+      "evidence": "Multiple `detail=f\"...{exc}\"` patterns.",
+      "recommended_fix": "Return generic client errors and log full details server-side with trace IDs.",
+      "fix_type": "code",
+      "estimated_effort": "small",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "Failure responses no longer include raw parser/upstream exception strings.",
+        "Server logs retain actionable details for triage."
+      ]
+    },
+    {
+      "id": "SEC-010",
+      "title": "Frontend advisory chain (vite/esbuild/picomatch) remains vulnerable",
+      "severity": "high",
+      "category": "dependency",
+      "location": [
+        "frontend/package.json:30",
+        "frontend/package-lock.json",
+        "frontend/Dockerfile:12"
+      ],
+      "description": "`npm audit` reports vulnerabilities in toolchain dependencies and runtime currently uses Vite dev server.",
+      "impact": "Potential dev-server abuse and dependency-level DoS risks.",
+      "exploitability": "medium",
+      "evidence": "npm audit reports 3 vulnerabilities (including high severity in picomatch).",
+      "recommended_fix": "Upgrade Vite/toolchain chain to patched versions and use production static serving.",
+      "fix_type": "dependency",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": false,
+      "validation_steps": [
+        "npm audit returns no unresolved high/critical vulnerabilities.",
+        "Production runtime does not expose Vite dev server."
+      ]
+    },
+    {
+      "id": "SEC-011",
+      "title": "Reset and invitation tokens are plaintext and URL-facing",
+      "severity": "medium",
+      "category": "secret",
+      "location": [
+        "backend/app/domains/password_resets/schemas.py:15",
+        "backend/app/domains/password_resets/service.py:45",
+        "backend/app/domains/password_resets/service.py:62",
+        "backend/app/domains/invitations/schemas.py:19",
+        "backend/app/domains/invitations/service.py:38",
+        "backend/app/domains/auth/router.py:55",
+        "frontend/src/pages/password-reset-page.tsx:149"
+      ],
+      "description": "Sensitive one-time tokens are stored/returned plaintext and passed in URL contexts.",
+      "impact": "Token leakage via logs/history/referrer or datastore compromise.",
+      "exploitability": "medium",
+      "evidence": "Schemas include token fields in API responses and router uses path token for reset context lookup.",
+      "recommended_fix": "Hash tokens at rest, reduce URL/token exposure, and shorten validity windows.",
+      "fix_type": "secret",
+      "estimated_effort": "medium",
+      "pre_deploy": false,
+      "needs_runtime_verification": true,
+      "validation_steps": [
+        "Database stores only token hashes.",
+        "Access logs redact/remove reset/invitation token values."
+      ]
+    },
+    {
+      "id": "SEC-012",
+      "title": "No visible CI/CD security gating",
+      "severity": "medium",
+      "category": "ci_cd",
+      "location": [
+        "repository-wide"
+      ],
+      "description": "Repository does not include tracked CI workflows for security scanning and deployment gating.",
+      "impact": "Security regressions can reach deployment without automated checks.",
+      "exploitability": "medium",
+      "evidence": "No `.github/workflows` files present in tracked file list.",
+      "recommended_fix": "Add CI checks for SAST, secret scan, dependency audit, container scan, and policy gates.",
+      "fix_type": "ci_cd",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_runtime_verification": true,
+      "validation_steps": [
+        "PR with intentional vulnerable dependency is blocked by CI policy.",
+        "Deployment requires passing security gates and approval workflow."
+      ]
+    }
+  ],
+  "quick_wins": [
+    "Remove default admin credentials from frontend and README.",
+    "Disable startup password overwrite for master admin account.",
+    "Replace wildcard CORS with explicit allowed origins.",
+    "Remove `--reload` and Vite dev server from production images.",
+    "Implement upload size checks before full file reads.",
+    "Replace raw exception details with generic client errors.",
+    "Upgrade vulnerable backend and frontend dependencies.",
+    "Disable path-based ingestion endpoints in production."
+  ],
+  "pre_deployment_checklist": [
+    "Rotate secrets and API keys currently in local runtime env files.",
+    "Eliminate default/known credentials from code and deployment config.",
+    "Enforce strong JWT secret startup policy.",
+    "Upgrade vulnerable dependencies and verify audit cleanliness.",
+    "Secure MongoDB network/auth posture.",
+    "Implement auth endpoint rate limiting and lockout strategy.",
+    "Switch containers to production mode and non-root users.",
+    "Add CI/CD security gates and release blockers."
+  ],
+  "post_deployment_checklist": [
+    "Run staged pen test focused on auth/upload/admin flows.",
+    "Verify TLS and security headers at edge.",
+    "Confirm token/URL redaction in access and application logs.",
+    "Enable alerting for brute-force and upload anomaly patterns.",
+    "Establish recurring dependency and image patch cadence."
+  ],
+  "unknowns": [
+    "Ingress/reverse-proxy TLS and header policy are not represented in repository files.",
+    "Branch protection and deployment approval policy are not visible in repository.",
+    "Cloud IAM/storage/network controls are not represented in this codebase.",
+    "Runtime log retention/redaction strategy cannot be validated from repository alone."
+  ],
+  "next_prompt_inputs": {
+    "optimization_targets": [
+      "Refactor authentication/session lifecycle after hardening baseline is complete.",
+      "Optimize file ingestion throughput after adding safe upload guards.",
+      "Improve Docker image size and startup time after production runtime migration."
+    ],
+    "refactor_targets": [
+      "Split `backend/app/domains/hospitality/service.py` into bounded modules (upload parsing, AI integration, reconciliation, reporting).",
+      "Centralize error handling/logging middleware for consistent safe responses.",
+      "Introduce a dedicated security config module with environment-specific enforcement."
+    ],
+    "hardening_targets": [
+      "Cookie-based auth or hardened token strategy with CSP and strict CORS.",
+      "One-time bootstrap admin flow and secret manager integration.",
+      "Policy-driven CI/CD security gates and immutable artifact promotion."
+    ],
+    "tests_to_add": [
+      "Auth brute-force throttling and lockout tests.",
+      "Upload limits and malformed parser regression tests.",
+      "Path-ingestion containment tests preventing out-of-root reads.",
+      "JWT secret policy startup-failure tests.",
+      "Token revocation/logout behavior tests."
+    ]
+  }
+}

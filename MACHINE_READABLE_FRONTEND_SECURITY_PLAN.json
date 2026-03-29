@@ -1,0 +1,358 @@
+{
+  "repo_name": "kanika-demo",
+  "audit_date": "2026-03-29",
+  "deployment_readiness": "Conditionally ready after critical fixes",
+  "summary": "Frontend is a Vite + React SPA with no detected persisted auth tokens and no current high/critical npm advisories, but deployment-blocking gaps remain in API base URL fallback behavior, URL token handling, CSRF contract clarity for cookie-auth, blob open safety, and static security header/CSP baseline.",
+  "findings": [
+    {
+      "id": "FESEC-001",
+      "title": "API base URL insecure fallback to localhost",
+      "severity": "high",
+      "category": "config",
+      "location": [
+        "frontend/src/api/client.ts:3",
+        "frontend/Dockerfile:13"
+      ],
+      "description": "Frontend API base falls back to localhost when env is missing.",
+      "impact": "Production builds can silently call localhost on user machines, breaking auth and risking unintended local request targeting.",
+      "exploitability": "high",
+      "evidence": "API_BASE_URL defaults to http://localhost:8000/api/v1 and Docker ARG default mirrors it.",
+      "recommended_fix": "Remove fallback for non-dev usage and fail build/startup when VITE_API_BASE_URL is missing or localhost in production.",
+      "fix_type": "config",
+      "estimated_effort": "small",
+      "pre_deploy": true,
+      "needs_backend_runtime_verification": false,
+      "validation_steps": [
+        "Build fails when VITE_API_BASE_URL is unset in production mode.",
+        "Built bundle contains only approved API origin(s)."
+      ]
+    },
+    {
+      "id": "FESEC-002",
+      "title": "Cookie-auth flow lacks visible CSRF contract",
+      "severity": "high",
+      "category": "session",
+      "location": [
+        "frontend/src/api/client.ts:8",
+        "frontend/src/lib/auth.tsx"
+      ],
+      "description": "Credentialed requests are enabled without visible frontend CSRF token/header handling.",
+      "impact": "If backend CSRF protection is weak/missing, authenticated state-changing requests could be forged cross-site.",
+      "exploitability": "medium",
+      "evidence": "Axios uses withCredentials: true; no CSRF request-header attachment pattern found.",
+      "recommended_fix": "Implement explicit CSRF token header strategy in frontend and enforce verification in backend for mutating routes.",
+      "fix_type": "runtime",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_backend_runtime_verification": true,
+      "validation_steps": [
+        "Mutating requests without CSRF token are rejected.",
+        "Cross-site forged requests cannot perform authenticated mutations."
+      ]
+    },
+    {
+      "id": "FESEC-003",
+      "title": "Invitation/reset tokens handled in URL query and shown in UI",
+      "severity": "high",
+      "category": "auth",
+      "location": [
+        "frontend/src/pages/login-page.tsx:35",
+        "frontend/src/pages/password-reset-page.tsx:28",
+        "frontend/src/pages/password-reset-page.tsx:147",
+        "frontend/src/features/users/use-users-management.ts:8",
+        "frontend/src/features/invitations/use-invitations-management.ts:14"
+      ],
+      "description": "One-time credential tokens are passed in query strings and reset token is rendered in page UI.",
+      "impact": "Tokens can leak via browser history, screenshots, logs, and referrer propagation.",
+      "exploitability": "high",
+      "evidence": "URLSearchParams usage for token/invitation and direct token display in reset page.",
+      "recommended_fix": "Read token once, exchange it quickly, scrub query from URL with history.replaceState, and do not render raw token in visible UI.",
+      "fix_type": "code",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_backend_runtime_verification": true,
+      "validation_steps": [
+        "Token is removed from URL immediately after first parse.",
+        "Token is no longer shown in UI.",
+        "Replay and expiry behavior validated with backend."
+      ]
+    },
+    {
+      "id": "FESEC-004",
+      "title": "Blob file open flow lacks frontend MIME allowlist enforcement",
+      "severity": "high",
+      "category": "data_exposure",
+      "location": [
+        "frontend/src/pages/contracts-page.tsx:85",
+        "frontend/src/pages/contract-detail-page.tsx:155"
+      ],
+      "description": "Blob responses are opened in new tabs without strict MIME allowlist checks.",
+      "impact": "Unexpected active content types can be rendered in browser context, increasing phishing/script execution risk.",
+      "exploitability": "medium",
+      "evidence": "createObjectURL + window.open without MIME gate in preview flows.",
+      "recommended_fix": "Allowlist safe MIME types for inline open; force download or block disallowed/unknown types.",
+      "fix_type": "code",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_backend_runtime_verification": true,
+      "validation_steps": [
+        "text/html and application/javascript responses are blocked.",
+        "Allowed MIME types open correctly; unknown types download safely."
+      ]
+    },
+    {
+      "id": "FESEC-005",
+      "title": "Static-hosting security header policy is incomplete",
+      "severity": "high",
+      "category": "deployment",
+      "location": [
+        "frontend/nginx.conf:8"
+      ],
+      "description": "Current static config lacks CSP and Permissions-Policy; HSTS is not defined here.",
+      "impact": "Missing browser hardening weakens defense against XSS/clickjacking/policy bypasses.",
+      "exploitability": "medium",
+      "evidence": "Only X-Content-Type-Options, X-Frame-Options, and Referrer-Policy are set in nginx config.",
+      "recommended_fix": "Add CSP and Permissions-Policy in static hosting path and enforce HSTS at TLS terminator/CDN.",
+      "fix_type": "config",
+      "estimated_effort": "small",
+      "pre_deploy": true,
+      "needs_backend_runtime_verification": true,
+      "validation_steps": [
+        "Headers are present on deployed responses, not only local container.",
+        "CSP report-only baseline passes before enforce mode."
+      ]
+    },
+    {
+      "id": "FESEC-006",
+      "title": "No axios timeout and no consistent cancellation controls",
+      "severity": "medium",
+      "category": "api_client",
+      "location": [
+        "frontend/src/api/client.ts",
+        "frontend/src/features"
+      ],
+      "description": "API client has no global timeout and request-heavy views lack consistent cancellation.",
+      "impact": "Hung requests and stale updates degrade reliability and can amplify failure during API stress.",
+      "exploitability": "medium",
+      "evidence": "Axios instance has no timeout; hooks/effects do not systematically abort pending requests.",
+      "recommended_fix": "Set global timeout and standardize abort/cancellation in long-running effects and heavy data views.",
+      "fix_type": "code",
+      "estimated_effort": "medium",
+      "pre_deploy": false,
+      "needs_backend_runtime_verification": false,
+      "validation_steps": [
+        "Slow API simulation triggers timeout handling.",
+        "Route/page switch aborts obsolete requests safely."
+      ]
+    },
+    {
+      "id": "FESEC-007",
+      "title": "Raw backend error details are surfaced directly in UI notifications",
+      "severity": "medium",
+      "category": "data_exposure",
+      "location": [
+        "frontend/src/lib/notify.tsx:146"
+      ],
+      "description": "UI helper forwards backend detail/message strings directly to user-facing toasts.",
+      "impact": "Internal backend information can leak to end users.",
+      "exploitability": "medium",
+      "evidence": "apiErrorMessage returns response.data.detail or response.data.message directly.",
+      "recommended_fix": "Allowlist/sanitize user-safe error text and keep raw backend details only in telemetry.",
+      "fix_type": "code",
+      "estimated_effort": "small",
+      "pre_deploy": false,
+      "needs_backend_runtime_verification": true,
+      "validation_steps": [
+        "Internal server errors produce generic user-safe message.",
+        "Raw detail remains available only in secure logs/telemetry."
+      ]
+    },
+    {
+      "id": "FESEC-008",
+      "title": "Missing explicit route/global error boundaries",
+      "severity": "medium",
+      "category": "routing",
+      "location": [
+        "frontend/src/main.tsx:42"
+      ],
+      "description": "Router tree lacks route-level error elements and app root lacks explicit global error boundary.",
+      "impact": "Unhandled runtime errors can produce blank screens or unstable error surfaces.",
+      "exploitability": "low",
+      "evidence": "createBrowserRouter route config has no errorElement entries.",
+      "recommended_fix": "Add a root error boundary plus route errorElement fallback pages with safe messaging.",
+      "fix_type": "code",
+      "estimated_effort": "small",
+      "pre_deploy": false,
+      "needs_backend_runtime_verification": false,
+      "validation_steps": [
+        "Forced render error results in controlled fallback UI.",
+        "No stack traces are shown to end users."
+      ]
+    },
+    {
+      "id": "FESEC-009",
+      "title": "Third-party avatar rendering leaks metadata externally",
+      "severity": "low",
+      "category": "data_exposure",
+      "location": [
+        "frontend/src/lib/avatar.ts:13"
+      ],
+      "description": "Avatar generation uses external service with user-provided seed.",
+      "impact": "External service receives request metadata and seed values.",
+      "exploitability": "low",
+      "evidence": "Avatar URL points to api.dicebear.com with seed parameter.",
+      "recommended_fix": "Move avatar rendering behind backend proxy/cache or internal generator; minimize seed sensitivity.",
+      "fix_type": "runtime",
+      "estimated_effort": "small",
+      "pre_deploy": false,
+      "needs_backend_runtime_verification": false,
+      "validation_steps": [
+        "No sensitive identifier used in avatar seed.",
+        "Referrer policy prevents excessive leakage."
+      ]
+    },
+    {
+      "id": "FESEC-010",
+      "title": "Duplicate Vite config files increase drift risk",
+      "severity": "low",
+      "category": "vite",
+      "location": [
+        "frontend/vite.config.ts",
+        "frontend/vite.config.js"
+      ],
+      "description": "Two Vite config files with overlapping concerns can diverge.",
+      "impact": "Security/build settings can be inconsistent across environments and tooling.",
+      "exploitability": "low",
+      "evidence": "Both .ts and .js Vite config files exist in repo.",
+      "recommended_fix": "Use one canonical Vite config (prefer TypeScript), remove duplicate generated config.",
+      "fix_type": "build",
+      "estimated_effort": "small",
+      "pre_deploy": false,
+      "needs_backend_runtime_verification": false,
+      "validation_steps": [
+        "Dev/build runs consistently using one config file.",
+        "No drift between duplicate config artifacts."
+      ]
+    },
+    {
+      "id": "FESEC-011",
+      "title": "Frontend CI lacks explicit build/lint/test gate and uses mutable action tags",
+      "severity": "medium",
+      "category": "deployment",
+      "location": [
+        ".github/workflows/security-gates.yml:53"
+      ],
+      "description": "Security workflow does not enforce frontend build/lint/typecheck/test as blocking checks and action refs use mutable major tags.",
+      "impact": "Broken frontend can still pass security workflow, and mutable CI dependencies increase supply-chain risk.",
+      "exploitability": "medium",
+      "evidence": "Workflow includes audit/scans but lacks dedicated frontend quality gate and uses @v4/@v5 refs.",
+      "recommended_fix": "Add blocking frontend jobs (build, lint, typecheck, tests) and pin third-party actions by commit SHA.",
+      "fix_type": "ci_cd",
+      "estimated_effort": "medium",
+      "pre_deploy": true,
+      "needs_backend_runtime_verification": true,
+      "validation_steps": [
+        "Introduce intentional frontend build failure and verify CI blocks merge.",
+        "Verify all actions resolve to pinned SHAs."
+      ]
+    },
+    {
+      "id": "FESEC-012",
+      "title": "Strict CSP compatibility risk from inline styles",
+      "severity": "medium",
+      "category": "react",
+      "location": [
+        "frontend/src/main.tsx:97",
+        "frontend/src/lib/notify.tsx"
+      ],
+      "description": "Inline style props may conflict with strict style-src CSP enforcement.",
+      "impact": "Future strict CSP rollout may break UI elements (toasts/layout) unexpectedly.",
+      "exploitability": "low",
+      "evidence": "Inline style usage in toaster and notification components.",
+      "recommended_fix": "Move inline styles to class-based CSS or deploy nonce/hash CSP strategy with validation in report-only mode.",
+      "fix_type": "code",
+      "estimated_effort": "medium",
+      "pre_deploy": false,
+      "needs_backend_runtime_verification": true,
+      "validation_steps": [
+        "CSP report-only shows no style violations on critical flows.",
+        "Strict CSP can be enabled without functional regressions."
+      ]
+    }
+  ],
+  "quick_wins": [
+    "Remove localhost API fallback and enforce explicit VITE_API_BASE_URL.",
+    "Scrub invitation/reset query tokens from URL immediately after first read.",
+    "Stop rendering raw reset token in UI.",
+    "Add MIME allowlist gate before opening blob URLs.",
+    "Add axios timeout default and begin cancellation standardization.",
+    "Add CSP and Permissions-Policy headers in frontend static hosting configuration.",
+    "Add frontend build/lint/typecheck/test CI gate and pin GitHub actions by SHA."
+  ],
+  "pre_deployment_checklist": [
+    "VITE_API_BASE_URL is required and points to approved non-localhost API domain for each environment.",
+    "Cookie-auth CSRF contract is implemented and verified on mutating requests.",
+    "Invitation/reset tokens are scrubbed from URL and not shown in UI.",
+    "Blob preview flow blocks unsafe MIME and safely handles unknown content.",
+    "CSP, frame, referrer, content-type, and permissions headers are active in deployed responses.",
+    "Frontend CI blocks merge on build/lint/typecheck/test failure.",
+    "Actions in security-critical workflows are pinned by commit SHA."
+  ],
+  "post_deployment_checklist": [
+    "Verify deployed bundle never targets localhost API.",
+    "Validate CSRF failures and successes from real frontend domain.",
+    "Verify token query data is absent from browser history and referrer telemetry.",
+    "Run MIME abuse test for file preview endpoints.",
+    "Confirm CSP report-only violations are resolved before enforcing CSP.",
+    "Validate runtime error telemetry captures sanitized context without sensitive data leakage."
+  ],
+  "unknowns": [
+    "Backend CSRF implementation details and SameSite cookie policy are not verifiable from frontend code.",
+    "Backend single-use and TTL guarantees for invitation/reset tokens require runtime verification.",
+    "Backend file-serving MIME/content enforcement requires staging/prod validation.",
+    "CDN/edge header policy and HSTS enforcement must be validated in deployed environment.",
+    "Repository branch protection enforcement must be confirmed in GitHub settings."
+  ],
+  "next_prompt_inputs": {
+    "optimization_targets": [
+      "Consolidate API client request helpers after timeout/cancellation hardening lands.",
+      "Reduce duplicate token parsing logic in auth-related pages once secure token flow is finalized.",
+      "Optimize large data table rendering after request lifecycle hardening."
+    ],
+    "refactor_targets": [
+      "frontend/src/api/client.ts",
+      "frontend/src/lib/auth.tsx",
+      "frontend/src/pages/login-page.tsx",
+      "frontend/src/pages/password-reset-page.tsx",
+      "frontend/src/pages/contracts-page.tsx",
+      "frontend/src/pages/contract-detail-page.tsx",
+      "frontend/src/lib/notify.tsx",
+      "frontend/src/main.tsx",
+      "frontend/nginx.conf",
+      ".github/workflows/security-gates.yml"
+    ],
+    "hardening_targets": [
+      "API base env validation and no-localhost policy",
+      "CSRF header/token contract for cookie-auth",
+      "Token URL scrubbing and secure one-time token UX",
+      "Blob MIME allowlist and safe open/download behavior",
+      "CSP + Permissions-Policy rollout",
+      "CI gate hardening and immutable action pinning"
+    ],
+    "tests_to_add": [
+      "Unit test: API client init fails when VITE_API_BASE_URL missing in production mode.",
+      "Unit test: token query scrubbing removes token from URL after first parse.",
+      "Unit test: blob preview blocks disallowed MIME and allows PDF/image.",
+      "Integration test: error mapper redacts backend internal details for user toasts.",
+      "Integration test: route error boundary renders fallback page on thrown render error.",
+      "CI test gate: break build fixture must fail frontend workflow."
+    ],
+    "frontend_runtime_checks": [
+      "Browser devtools network check for API origin correctness.",
+      "CSRF challenge checks for authenticated mutating calls.",
+      "Security header inspection from deployed CDN/edge endpoints.",
+      "CSP report-only event monitoring during staging smoke tests.",
+      "Token leak checks via URL/referrer/session replay attempts."
+    ]
+  }
+}
