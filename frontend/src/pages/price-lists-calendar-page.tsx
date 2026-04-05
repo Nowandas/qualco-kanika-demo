@@ -18,7 +18,7 @@ function dayKey(day: Date): string {
 export function PriceListsCalendarPage() {
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [offerFile, setOfferFile] = useState<File | null>(null);
-  const [offerOperatorCode, setOfferOperatorCode] = useState("JET2");
+  const [offerOperatorCode, setOfferOperatorCode] = useState("EASYJET");
   const [contractSearch, setContractSearch] = useState("");
   const [selectedImpactContractIds, setSelectedImpactContractIds] = useState<string[]>([]);
 
