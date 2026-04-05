@@ -22,6 +22,8 @@ from app.domains.hospitality.repository import HospitalityRepository
 from app.domains.hospitality.schemas import (
     AIPricingPersistRequest,
     AlertResolveRequest,
+    ContractTemplateCreateRequest,
+    ContractTemplateUpdateRequest,
     ContractPathIngestionRequest,
     ReconciliationImportPersistRequest,
     PromotionPathIngestionRequest,
@@ -66,10 +68,14 @@ PROMOTION_KEYWORDS = {
 
 RECONCILIATION_HEADER_SYNONYMS: dict[str, tuple[str, ...]] = {
     "reservation_id": ("reservation", "booking", "confirmation", "reference", "res id"),
+    "booking_code": ("booking code", "booking id", "booking reference", "booking no", "reservation code"),
+    "booking_date": ("booking date", "booked on", "reservation date", "created date"),
     "hotel_code": ("hotel", "property", "hotel code"),
     "operator_code": ("operator", "tour operator", "to code", "operator code"),
     "room_type": ("room type", "room", "accommodation"),
     "board_type": ("board type", "board", "meal"),
+    "check_in_date": ("check in", "check-in", "arrival date", "arrival"),
+    "check_out_date": ("check out", "check-out", "departure date", "departure"),
     "stay_date": ("stay date", "arrival", "check in", "check-in", "date"),
     "nights": ("nights", "los", "length of stay"),
     "pax_adults": ("adults", "adult pax", "adult"),
@@ -313,10 +319,14 @@ AI_RECONCILIATION_MAPPING_SCHEMA: dict = {
                 "type": "object",
                 "properties": {
                     "reservation_id": {"type": "string"},
+                    "booking_code": {"type": ["string", "null"]},
+                    "booking_date": {"type": ["string", "null"]},
                     "hotel_code": {"type": "string"},
                     "operator_code": {"type": "string"},
                     "room_type": {"type": "string"},
                     "board_type": {"type": "string"},
+                    "check_in_date": {"type": ["string", "null"]},
+                    "check_out_date": {"type": ["string", "null"]},
                     "stay_date": {"type": "string"},
                     "nights": {"type": ["number", "integer"]},
                     "pax_adults": {"type": ["number", "integer"]},
@@ -395,6 +405,16 @@ STANDARD_RECOMMEND_TEXT_WINDOW_CHARS = 120_000
 STANDARD_RECOMMEND_BASELINE_WINDOW_CHARS = 60_000
 FASTER_RECOMMEND_TEXT_WINDOW_CHARS = 40_000
 FASTER_RECOMMEND_BASELINE_WINDOW_CHARS = 12_000
+
+REQUIRED_RECONCILIATION_TEMPLATE_FIELDS: tuple[str, ...] = (
+    "booking_code",
+    "booking_date",
+    "board_type",
+    "cost",
+    "room",
+    "check_in_date",
+    "check_out_date",
+)
 
 MAX_CONTRACT_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_PROMOTION_UPLOAD_BYTES = 8 * 1024 * 1024
@@ -509,6 +529,226 @@ class HospitalityService:
             "updated_at": stored.get("updated_at"),
             "updated_by_user_id": stored.get("updated_by_user_id"),
         }
+
+    @staticmethod
+    def _normalize_template_required_fields(raw_fields: object) -> list[str]:
+        normalized: list[str] = []
+        if isinstance(raw_fields, list):
+            for item in raw_fields:
+                token = str(item or "").strip().lower()
+                if token and token not in normalized:
+                    normalized.append(token)
+        for item in REQUIRED_RECONCILIATION_TEMPLATE_FIELDS:
+            if item not in normalized:
+                normalized.append(item)
+        return normalized
+
+    @staticmethod
+    def _normalize_template_confidence(raw_value: object) -> str:
+        value = str(raw_value or "medium").strip().lower()
+        if value in {"low", "medium", "high"}:
+            return value
+        return "medium"
+
+    def _normalize_reconciliation_template_mapping(self, raw_mapping: object) -> dict:
+        defaults = {
+            "booking_code_field": "reservation_id",
+            "booking_date_field": "booking_date",
+            "board_type_field": "board_type",
+            "cost_field": "actual_price",
+            "room_field": "room_type",
+            "check_in_field": "check_in_date",
+            "check_out_field": "check_out_date",
+            "notes": None,
+        }
+        if isinstance(raw_mapping, dict):
+            for key in (
+                "booking_code_field",
+                "booking_date_field",
+                "board_type_field",
+                "cost_field",
+                "room_field",
+                "check_in_field",
+                "check_out_field",
+            ):
+                value = str(raw_mapping.get(key) or "").strip()
+                if value:
+                    defaults[key] = value
+            notes = str(raw_mapping.get("notes") or "").strip()
+            if notes:
+                defaults["notes"] = notes[:2000]
+        return defaults
+
+    async def list_contract_templates(
+        self,
+        *,
+        hotel_id: str | None = None,
+        hotel_code: str | None = None,
+        operator_code: str | None = None,
+        include_inactive: bool = False,
+        limit: int = 500,
+    ) -> list[dict]:
+        return await self.repository.list_contract_templates(
+            hotel_id=hotel_id,
+            hotel_code=hotel_code,
+            operator_code=operator_code,
+            include_inactive=include_inactive,
+            limit=limit,
+        )
+
+    async def get_contract_template(self, template_id: str) -> dict:
+        template = await self.repository.get_contract_template(template_id)
+        if not template:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract template not found.")
+        return template
+
+    async def create_contract_template(
+        self,
+        payload: ContractTemplateCreateRequest,
+        *,
+        created_by_user_id: str,
+    ) -> dict:
+        resolved_hotel_id: str | None = None
+        resolved_hotel_code: str | None = None
+        if (payload.hotel_id and payload.hotel_id.strip()) or (payload.hotel_code and payload.hotel_code.strip()):
+            resolved_hotel_id, resolved_hotel_code = await self._resolve_hotel_identity(
+                hotel_id=payload.hotel_id,
+                hotel_code=payload.hotel_code,
+            )
+
+        now = utcnow()
+        template = {
+            "name": payload.name.strip(),
+            "operator_code": payload.operator_code.strip().upper(),
+            "hotel_id": resolved_hotel_id,
+            "hotel_code": resolved_hotel_code,
+            "season_label": payload.season_label.strip() if payload.season_label else None,
+            "source_contract_file_name": payload.source_contract_file_name.strip() if payload.source_contract_file_name else None,
+            "confidence": self._normalize_template_confidence(payload.confidence),
+            "analysis_provider": "openai",
+            "analysis_model": payload.analysis_model.strip() if payload.analysis_model else None,
+            "analysis_usage": payload.analysis_usage if isinstance(payload.analysis_usage, dict) else {},
+            "extraction_schema": self._build_effective_extraction_schema(payload.extraction_schema),
+            "mapping_instructions": self._build_effective_mapping_instructions(payload.mapping_instructions),
+            "database_mapping": self._normalize_database_mapping_rows(payload.database_mapping),
+            "reconciliation_mapping": self._normalize_reconciliation_template_mapping(payload.reconciliation_mapping.model_dump()),
+            "required_reconciliation_fields": self._normalize_template_required_fields(payload.required_reconciliation_fields),
+            "is_active": bool(payload.is_active),
+            "created_by_user_id": created_by_user_id,
+            "created_at": now,
+            "updated_at": now,
+        }
+        return await self.repository.create_contract_template(template)
+
+    async def update_contract_template(
+        self,
+        template_id: str,
+        payload: ContractTemplateUpdateRequest,
+    ) -> dict:
+        existing = await self.get_contract_template(template_id)
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            return existing
+
+        patch: dict = {"updated_at": utcnow()}
+        if "name" in updates and isinstance(updates["name"], str):
+            patch["name"] = updates["name"].strip()
+        if "season_label" in updates:
+            value = updates.get("season_label")
+            patch["season_label"] = value.strip() if isinstance(value, str) and value.strip() else None
+        if "source_contract_file_name" in updates:
+            value = updates.get("source_contract_file_name")
+            patch["source_contract_file_name"] = value.strip() if isinstance(value, str) and value.strip() else None
+        if "mapping_instructions" in updates and isinstance(updates.get("mapping_instructions"), str):
+            patch["mapping_instructions"] = self._build_effective_mapping_instructions(updates["mapping_instructions"])
+        if "extraction_schema" in updates and isinstance(updates.get("extraction_schema"), dict):
+            patch["extraction_schema"] = self._build_effective_extraction_schema(updates["extraction_schema"])
+        if "database_mapping" in updates and isinstance(updates.get("database_mapping"), list):
+            patch["database_mapping"] = self._normalize_database_mapping_rows(updates["database_mapping"])
+        if "reconciliation_mapping" in updates and updates.get("reconciliation_mapping") is not None:
+            raw = updates["reconciliation_mapping"]
+            raw_payload = raw.model_dump() if hasattr(raw, "model_dump") else raw
+            patch["reconciliation_mapping"] = self._normalize_reconciliation_template_mapping(raw_payload)
+        if "required_reconciliation_fields" in updates:
+            patch["required_reconciliation_fields"] = self._normalize_template_required_fields(
+                updates.get("required_reconciliation_fields")
+            )
+        if "analysis_model" in updates:
+            value = updates.get("analysis_model")
+            patch["analysis_model"] = value.strip() if isinstance(value, str) and value.strip() else None
+        if "analysis_usage" in updates:
+            patch["analysis_usage"] = updates["analysis_usage"] if isinstance(updates["analysis_usage"], dict) else {}
+        if "confidence" in updates:
+            patch["confidence"] = self._normalize_template_confidence(updates["confidence"])
+        if "is_active" in updates:
+            patch["is_active"] = bool(updates["is_active"])
+
+        updated = await self.repository.update_contract_template(template_id, patch)
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract template not found.")
+        return updated
+
+    async def generate_contract_template_from_upload(
+        self,
+        *,
+        upload_file: UploadFile,
+        template_name: str | None,
+        hotel_id: str | None,
+        hotel_code: str | None,
+        operator_code: str,
+        season_label: str | None,
+        recommendation_mode: str | None,
+        created_by_user_id: str,
+    ) -> dict:
+        recommendation = await self.ai_recommend_pricing_content(
+            upload_file=upload_file,
+            hotel_id=hotel_id,
+            hotel_code=hotel_code,
+            operator_code=operator_code,
+            season_label=season_label,
+            recommendation_mode=recommendation_mode,
+        )
+
+        resolved_hotel_id = recommendation.get("hotel_id")
+        resolved_hotel_code = recommendation.get("hotel_code")
+        normalized_operator = str(recommendation.get("operator_code") or operator_code).strip().upper()
+        resolved_name = str(template_name or "").strip()
+        if not resolved_name:
+            parts = [normalized_operator]
+            if season_label and season_label.strip():
+                parts.append(season_label.strip())
+            parts.append("AI Template")
+            resolved_name = " · ".join(parts)
+
+        now = utcnow()
+        template = {
+            "name": resolved_name[:160],
+            "operator_code": normalized_operator,
+            "hotel_id": str(resolved_hotel_id).strip() if resolved_hotel_id else None,
+            "hotel_code": str(resolved_hotel_code).strip().upper() if resolved_hotel_code else None,
+            "season_label": season_label.strip() if season_label else None,
+            "source_contract_file_name": str(recommendation.get("file_name") or "").strip() or None,
+            "confidence": self._normalize_template_confidence(recommendation.get("confidence")),
+            "analysis_provider": "openai",
+            "analysis_model": str(recommendation.get("analysis_model") or "").strip() or None,
+            "analysis_usage": recommendation.get("analysis_usage") if isinstance(recommendation.get("analysis_usage"), dict) else {},
+            "extraction_schema": self._build_effective_extraction_schema(
+                recommendation.get("suggested_schema") if isinstance(recommendation.get("suggested_schema"), dict) else {}
+            ),
+            "mapping_instructions": self._build_effective_mapping_instructions(
+                str(recommendation.get("suggested_mapping_instructions") or "")
+            ),
+            "database_mapping": self._normalize_database_mapping_rows(
+                recommendation.get("database_mapping") if isinstance(recommendation.get("database_mapping"), list) else []
+            ),
+            "reconciliation_mapping": self._normalize_reconciliation_template_mapping(None),
+            "required_reconciliation_fields": self._normalize_template_required_fields(None),
+            "is_active": True,
+            "created_by_user_id": created_by_user_id,
+            "created_at": now,
+            "updated_at": now,
+        }
+        return await self.repository.create_contract_template(template)
 
     async def _get_effective_upload_limits_bytes(self) -> dict[str, int]:
         limits = await self.get_upload_limits()
@@ -1476,6 +1716,7 @@ class HospitalityService:
         model: str | None,
         schema_override: dict | None,
         mapping_instructions: str | None,
+        template_id: str | None,
         created_by_user_id: str,
     ) -> dict:
         file_name = upload_file.filename or "pricing-contract.pdf"
@@ -1501,8 +1742,41 @@ class HospitalityService:
             hotel_id=hotel_id,
             hotel_code=hotel_code,
         )
-        schema_used = self._build_effective_extraction_schema(schema_override)
-        effective_mapping_instructions = self._build_effective_mapping_instructions(mapping_instructions)
+
+        selected_schema_override = schema_override
+        selected_mapping_instructions = mapping_instructions
+        if template_id and template_id.strip():
+            template = await self.get_contract_template(template_id.strip())
+            template_operator = str(template.get("operator_code") or "").strip().upper()
+            normalized_operator = operator_code.strip().upper()
+            if template_operator and template_operator != normalized_operator:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Selected template operator does not match operator_code for extraction.",
+                )
+            template_hotel_id = str(template.get("hotel_id") or "").strip()
+            template_hotel_code = str(template.get("hotel_code") or "").strip().upper()
+            if template_hotel_id and template_hotel_id != resolved_hotel_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Selected template is bound to a different hotel.",
+                )
+            if template_hotel_code and template_hotel_code != resolved_hotel_code:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Selected template hotel code does not match selected hotel.",
+                )
+
+            if selected_schema_override is None and isinstance(template.get("extraction_schema"), dict):
+                selected_schema_override = template.get("extraction_schema")
+            if (
+                (selected_mapping_instructions is None or not str(selected_mapping_instructions).strip())
+                and isinstance(template.get("mapping_instructions"), str)
+            ):
+                selected_mapping_instructions = str(template.get("mapping_instructions") or "")
+
+        schema_used = self._build_effective_extraction_schema(selected_schema_override)
+        effective_mapping_instructions = self._build_effective_mapping_instructions(selected_mapping_instructions)
         extracted_data_raw, usage, selected_model = await self._run_openai_structured_extraction(
             text=text,
             model=model,
@@ -1819,11 +2093,23 @@ class HospitalityService:
         reservations_by_unique_key: dict[str, dict] = {}
         for index, line in enumerate(payload.lines, start=1):
             line_data = line.model_dump()
-            reservation_id = str(line_data.get("reservation_id") or "").strip() or f"AUTO-{payload.sheet_name}-{index}"
+            reservation_id = str(line_data.get("reservation_id") or line_data.get("booking_code") or "").strip() or f"AUTO-{payload.sheet_name}-{index}"
+            booking_code = str(line_data.get("booking_code") or reservation_id).strip() or reservation_id
+            booking_date = self._coerce_optional_date(line_data.get("booking_date"))
             room_type = str(line_data.get("room_type") or "").strip() or "Standard Room"
             board_type = self._normalize_board_type(str(line_data.get("board_type") or "").strip())
             stay_date = self._coerce_date(line_data.get("stay_date"))
-            nights = max(1, min(60, self._coerce_int(line_data.get("nights"), default=1)))
+            check_in_date = self._coerce_optional_date(line_data.get("check_in_date")) or stay_date
+            check_out_date = self._coerce_optional_date(line_data.get("check_out_date"))
+            explicit_nights = self._coerce_int(line_data.get("nights"), default=0)
+            if explicit_nights > 0:
+                nights = max(1, min(60, explicit_nights))
+            elif check_in_date and check_out_date:
+                nights = max(1, min(60, (check_out_date - check_in_date).days))
+            else:
+                nights = 1
+            if check_out_date is None and check_in_date:
+                check_out_date = check_in_date + timedelta(days=nights)
             pax_adults = max(1, min(10, self._coerce_int(line_data.get("pax_adults"), default=2)))
             pax_children = max(0, min(10, self._coerce_int(line_data.get("pax_children"), default=0)))
             actual_price = self._coerce_float(line_data.get("actual_price"))
@@ -1844,9 +2130,13 @@ class HospitalityService:
                 "source_system": payload.source_system,
                 "reservation_id_column": payload.reservation_id_column,
                 "reservation_id": reservation_id,
+                "booking_code": booking_code,
+                "booking_date": booking_date,
                 "reservation_unique_key": unique_key,
                 "room_type": self._to_title_case(room_type),
                 "board_type": board_type,
+                "check_in_date": check_in_date,
+                "check_out_date": check_out_date,
                 "stay_date": stay_date,
                 "nights": nights,
                 "pax_adults": pax_adults,
@@ -3598,6 +3888,8 @@ class HospitalityService:
     def _normalize_database_mapping_rows(self, rows: list[dict]) -> list[dict]:
         normalized: list[dict] = []
         for row in rows:
+            if hasattr(row, "model_dump"):
+                row = row.model_dump()
             if not isinstance(row, dict):
                 continue
             target_entity = str(row.get("target_entity") or "").strip()
@@ -6028,10 +6320,26 @@ class HospitalityService:
 
         return {
             "reservation_id": str(line_data.get("reservation_id")),
+            "booking_code": str(line_data.get("booking_code") or line_data.get("reservation_id") or ""),
+            "booking_date": (
+                line_data.get("booking_date").isoformat()
+                if isinstance(line_data.get("booking_date"), date)
+                else (str(line_data.get("booking_date")) if line_data.get("booking_date") else None)
+            ),
             "hotel_code": str(line_data.get("hotel_code")),
             "operator_code": str(line_data.get("operator_code")),
             "room_type": str(line_data.get("room_type")),
             "board_type": str(line_data.get("board_type")),
+            "check_in_date": (
+                line_data.get("check_in_date").isoformat()
+                if isinstance(line_data.get("check_in_date"), date)
+                else (str(line_data.get("check_in_date")) if line_data.get("check_in_date") else None)
+            ),
+            "check_out_date": (
+                line_data.get("check_out_date").isoformat()
+                if isinstance(line_data.get("check_out_date"), date)
+                else (str(line_data.get("check_out_date")) if line_data.get("check_out_date") else None)
+            ),
             "stay_date": stay_date.isoformat(),
             "nights": nights,
             "pax_adults": pax_adults,
@@ -6523,6 +6831,30 @@ class HospitalityService:
                     column_label_by_key=column_label_by_key,
                 )
             ) or datetime.now(timezone.utc).date()
+            check_in_date = self._coerce_optional_date(
+                self._pick_reconciliation_payload_value(
+                    row_values=row_values,
+                    resolved_header_mapping=resolved_header_mapping,
+                    field_name="check_in_date",
+                    column_label_by_key=column_label_by_key,
+                )
+            ) or stay_date
+            check_out_date = self._coerce_optional_date(
+                self._pick_reconciliation_payload_value(
+                    row_values=row_values,
+                    resolved_header_mapping=resolved_header_mapping,
+                    field_name="check_out_date",
+                    column_label_by_key=column_label_by_key,
+                )
+            )
+            booking_date = self._coerce_optional_date(
+                self._pick_reconciliation_payload_value(
+                    row_values=row_values,
+                    resolved_header_mapping=resolved_header_mapping,
+                    field_name="booking_date",
+                    column_label_by_key=column_label_by_key,
+                )
+            )
 
             reservation = ""
             if reservation_id_values:
@@ -6539,6 +6871,15 @@ class HospitalityService:
                 ).strip()
             if not reservation:
                 reservation = f"AUTO-{sheet_title}-{row_number}"
+            booking_code = str(
+                self._pick_reconciliation_payload_value(
+                    row_values=row_values,
+                    resolved_header_mapping=resolved_header_mapping,
+                    field_name="booking_code",
+                    column_label_by_key=column_label_by_key,
+                )
+                or reservation
+            ).strip() or reservation
 
             hotel_code = str(
                 self._pick_reconciliation_payload_value(
@@ -6582,21 +6923,23 @@ class HospitalityService:
                 or ""
             ).strip()
 
-            nights = max(
-                1,
-                min(
-                    60,
-                    self._coerce_int(
-                        self._pick_reconciliation_payload_value(
-                            row_values=row_values,
-                            resolved_header_mapping=resolved_header_mapping,
-                            field_name="nights",
-                            column_label_by_key=column_label_by_key,
-                        ),
-                        default=1,
-                    ),
+            explicit_nights = self._coerce_int(
+                self._pick_reconciliation_payload_value(
+                    row_values=row_values,
+                    resolved_header_mapping=resolved_header_mapping,
+                    field_name="nights",
+                    column_label_by_key=column_label_by_key,
                 ),
+                default=0,
             )
+            if explicit_nights > 0:
+                nights = max(1, min(60, explicit_nights))
+            elif check_in_date and check_out_date:
+                nights = max(1, min(60, (check_out_date - check_in_date).days))
+            else:
+                nights = 1
+            if check_out_date is None and check_in_date:
+                check_out_date = check_in_date + timedelta(days=nights)
             pax_adults = max(
                 1,
                 min(
@@ -6648,11 +6991,15 @@ class HospitalityService:
             normalized.append(
                 {
                     "reservation_id": reservation,
+                    "booking_code": booking_code,
+                    "booking_date": booking_date,
                     "hotel_code": hotel_code,
                     "operator_code": operator_code,
                     "contract_id": contract_id,
                     "room_type": self._to_title_case(room_type_raw),
                     "board_type": self._normalize_board_type(board_type_raw),
+                    "check_in_date": check_in_date,
+                    "check_out_date": check_out_date,
                     "stay_date": stay_date,
                     "nights": nights,
                     "pax_adults": pax_adults,
@@ -6863,6 +7210,23 @@ class HospitalityService:
                 or item.get("check_in_date")
                 or item.get("date")
             ) or datetime.now(timezone.utc).date()
+            check_in_date = self._coerce_optional_date(
+                item.get("check_in_date")
+                or item.get("check_in")
+                or item.get("arrival_date")
+                or item.get("stay_date")
+            ) or stay_date
+            check_out_date = self._coerce_optional_date(
+                item.get("check_out_date")
+                or item.get("check_out")
+                or item.get("departure_date")
+                or item.get("departure")
+            )
+            booking_date = self._coerce_optional_date(
+                item.get("booking_date")
+                or item.get("booked_on")
+                or item.get("reservation_date")
+            )
 
             row_hint = self._coerce_int(item.get("row_number"), default=index)
             reservation = ""
@@ -6871,6 +7235,7 @@ class HospitalityService:
             if not reservation:
                 reservation = str(
                     item.get("reservation_id")
+                    or item.get("booking_code")
                     or item.get("booking_reference")
                     or item.get("reservation")
                     or item.get("reference")
@@ -6878,6 +7243,7 @@ class HospitalityService:
                 ).strip()
             if not reservation:
                 reservation = f"AUTO-{sheet_title}-{row_hint}"
+            booking_code = str(item.get("booking_code") or reservation).strip() or reservation
 
             room_type_raw = str(item.get("room_type") or item.get("room") or "").strip()
             board_type_raw = str(item.get("board_type") or item.get("meal_plan") or item.get("board") or "").strip()
@@ -6887,7 +7253,15 @@ class HospitalityService:
             hotel_code = str(item.get("hotel_code") or "").strip().upper() or default_hotel
             operator_code = str(item.get("operator_code") or "").strip().upper() or default_operator
 
-            nights = max(1, min(60, self._coerce_int(item.get("nights"), default=1)))
+            explicit_nights = self._coerce_int(item.get("nights"), default=0)
+            if explicit_nights > 0:
+                nights = max(1, min(60, explicit_nights))
+            elif check_in_date and check_out_date:
+                nights = max(1, min(60, (check_out_date - check_in_date).days))
+            else:
+                nights = 1
+            if check_out_date is None and check_in_date:
+                check_out_date = check_in_date + timedelta(days=nights)
             pax_adults = max(1, min(10, self._coerce_int(item.get("pax_adults") or item.get("adults"), default=2)))
             pax_children = max(0, min(10, self._coerce_int(item.get("pax_children") or item.get("children"), default=0)))
             contract_rate = self._coerce_float(item.get("contract_rate") or item.get("expected_rate"))
@@ -6896,11 +7270,15 @@ class HospitalityService:
             normalized.append(
                 {
                     "reservation_id": reservation,
+                    "booking_code": booking_code,
+                    "booking_date": booking_date,
                     "hotel_code": hotel_code,
                     "operator_code": operator_code,
                     "contract_id": contract_id,
                     "room_type": self._to_title_case(room_type_raw),
                     "board_type": self._normalize_board_type(board_type_raw),
+                    "check_in_date": check_in_date,
+                    "check_out_date": check_out_date,
                     "stay_date": stay_date,
                     "nights": nights,
                     "pax_adults": pax_adults,
@@ -7104,18 +7482,32 @@ class HospitalityService:
         if actual_price is None:
             return None
 
-        stay_date = self._coerce_optional_date(pick("stay_date")) or datetime.now(timezone.utc).date()
+        check_in_date = self._coerce_optional_date(pick("check_in_date"))
+        check_out_date = self._coerce_optional_date(pick("check_out_date"))
+        stay_date = self._coerce_optional_date(pick("stay_date")) or check_in_date or datetime.now(timezone.utc).date()
+        if check_in_date is None:
+            check_in_date = stay_date
         room_type = str(pick("room_type") or "").strip()
         board_type = self._normalize_board_type(str(pick("board_type") or "").strip())
 
-        reservation = str(pick("reservation_id") or "").strip()
+        reservation = str(pick("reservation_id") or pick("booking_code") or "").strip()
         if not reservation:
             reservation = f"AUTO-{sheet_title}-{row_number}"
+        booking_code = str(pick("booking_code") or reservation).strip() or reservation
 
         hotel_code = str(pick("hotel_code") or "").strip().upper() or default_hotel
         operator_code = str(pick("operator_code") or "").strip().upper() or default_operator
 
-        nights = max(1, min(60, self._coerce_int(pick("nights"), default=1)))
+        explicit_nights = self._coerce_int(pick("nights"), default=0)
+        if explicit_nights > 0:
+            nights = max(1, min(60, explicit_nights))
+        elif check_in_date and check_out_date:
+            nights = max(1, min(60, (check_out_date - check_in_date).days))
+        else:
+            nights = 1
+        if check_out_date is None and check_in_date:
+            check_out_date = check_in_date + timedelta(days=nights)
+        booking_date = self._coerce_optional_date(pick("booking_date"))
         pax_adults = max(1, min(10, self._coerce_int(pick("pax_adults"), default=2)))
         pax_children = max(0, min(10, self._coerce_int(pick("pax_children"), default=0)))
         contract_rate = self._coerce_float(pick("contract_rate"))
@@ -7123,11 +7515,15 @@ class HospitalityService:
 
         return {
             "reservation_id": reservation,
+            "booking_code": booking_code,
+            "booking_date": booking_date,
             "hotel_code": hotel_code,
             "operator_code": operator_code,
             "contract_id": contract_id,
             "room_type": self._to_title_case(room_type) if room_type else "Standard Room",
             "board_type": board_type,
+            "check_in_date": check_in_date,
+            "check_out_date": check_out_date,
             "stay_date": stay_date,
             "nights": nights,
             "pax_adults": pax_adults,

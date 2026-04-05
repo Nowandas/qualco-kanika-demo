@@ -3,10 +3,19 @@ import { ArrowLeft, FileSearch, RefreshCw } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api, isRequestCancelled } from "@/api/client";
-import type { ContractDocument, PricingRule, PromotionOffer, SyncRun } from "@/api/types";
+import type {
+  ContractDocument,
+  PriceListMatrix,
+  PricingRule,
+  PromotionAIIngestResponse,
+  PromotionOffer,
+  SyncRun,
+} from "@/api/types";
 import { PageShell, SectionCard } from "@/components/app/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { openBlobSafely } from "@/lib/blob-safety";
 import { notifyError, notifyInfo } from "@/lib/notify";
@@ -97,6 +106,15 @@ export function ContractDetailPage() {
   const [contract, setContract] = useState<ContractDocument | null>(null);
   const [rules, setRules] = useState<PricingRule[]>([]);
   const [promotions, setPromotions] = useState<PromotionOffer[]>([]);
+  const [relatedContracts, setRelatedContracts] = useState<ContractDocument[]>([]);
+  const [matrix, setMatrix] = useState<PriceListMatrix | null>(null);
+  const [matrixLoading, setMatrixLoading] = useState(false);
+  const [includePromotions, setIncludePromotions] = useState(false);
+  const [selectedPromotionIds, setSelectedPromotionIds] = useState<string[]>([]);
+  const [promotionOfferFile, setPromotionOfferFile] = useState<File | null>(null);
+  const [promotionOperatorCode, setPromotionOperatorCode] = useState("");
+  const [ingestingPromotion, setIngestingPromotion] = useState(false);
+  const [lastPromotionIngest, setLastPromotionIngest] = useState<PromotionAIIngestResponse | null>(null);
   const [syncRuns, setSyncRuns] = useState<SyncRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -127,7 +145,14 @@ export function ContractDetailPage() {
         setContract(contractResponse.data);
         setRules(rulesResponse.data);
         setPromotions(promotionsResponse.data);
+        const scopedHotelId = contractResponse.data.hotel_id ?? undefined;
+        const relatedContractsResponse = await api.get<ContractDocument[]>("/hospitality/contracts", {
+          params: { hotel_id: scopedHotelId, operator_code: contractResponse.data.operator_code, limit: 1000, sort_by: "updated_at", sort_order: "desc" },
+          signal: controller.signal,
+        });
+        setRelatedContracts(relatedContractsResponse.data);
         setSyncRuns(syncResponse.data);
+        setPromotionOperatorCode(contractResponse.data.operator_code);
       } catch (error) {
         if (isRequestCancelled(error)) {
           return;
@@ -152,6 +177,147 @@ export function ContractDetailPage() {
   }, [load]);
 
   const title = useMemo(() => contract?.file_name ?? "Contract Detail", [contract?.file_name]);
+
+  const loadMatrix = useCallback(async () => {
+    if (!contractId) {
+      return;
+    }
+    setMatrixLoading(true);
+    try {
+      const response = await api.get<PriceListMatrix>(`/hospitality/contracts/${contractId}/price-matrix`, {
+        params: {
+          include_promotions: includePromotions,
+          promotion_ids: selectedPromotionIds.length ? selectedPromotionIds.join(",") : undefined,
+        },
+      });
+      setMatrix(response.data);
+    } catch (error) {
+      notifyError(error, "Could not load contract price matrix.");
+      setMatrix(null);
+    } finally {
+      setMatrixLoading(false);
+    }
+  }, [contractId, includePromotions, selectedPromotionIds]);
+
+  useEffect(() => {
+    if (!contractId) {
+      return;
+    }
+    void loadMatrix();
+  }, [contractId, loadMatrix]);
+
+  useEffect(() => {
+    const allowed = new Set(promotions.map((item) => item.id));
+    setSelectedPromotionIds((previous) => previous.filter((item) => allowed.has(item)));
+  }, [promotions]);
+
+  const onTogglePromotionFilter = (promotionId: string, checked: boolean) => {
+    setSelectedPromotionIds((previous) => {
+      if (checked) {
+        if (previous.includes(promotionId)) return previous;
+        return [...previous, promotionId];
+      }
+      return previous.filter((item) => item !== promotionId);
+    });
+  };
+
+  const onIngestPromotion = useCallback(async () => {
+    if (!contract) {
+      return;
+    }
+    if (!promotionOfferFile) {
+      notifyInfo("Select an offer file first.");
+      return;
+    }
+    if (ingestingPromotion) {
+      return;
+    }
+
+    setIngestingPromotion(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", promotionOfferFile);
+      if (contract.hotel_id) {
+        formData.append("hotel_id", contract.hotel_id);
+      }
+      formData.append("hotel_code", contract.hotel_code);
+      formData.append("operator_code", promotionOperatorCode.trim() || contract.operator_code);
+      formData.append("contract_ids", contract.id);
+
+      const response = await api.post<PromotionAIIngestResponse>("/hospitality/promotions/ai-ingest", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setLastPromotionIngest(response.data);
+      setPromotionOfferFile(null);
+      await load(false);
+      await loadMatrix();
+    } catch (error) {
+      notifyError(error, "Could not AI-ingest promotion offer.");
+    } finally {
+      setIngestingPromotion(false);
+    }
+  }, [contract, ingestingPromotion, load, loadMatrix, promotionOfferFile, promotionOperatorCode]);
+
+  const periodLabels = useMemo(() => {
+    if (!matrix) {
+      return [];
+    }
+    const labels = new Set<string>();
+    for (const period of matrix.period_ranges) {
+      const value = String(period.label || "").trim();
+      if (value) {
+        labels.add(value);
+      }
+    }
+    for (const entry of matrix.entries) {
+      const value = String(entry.period_label || "").trim();
+      if (value) {
+        labels.add(value);
+      }
+    }
+    return Array.from(labels);
+  }, [matrix]);
+
+  const matrixRows = useMemo(() => {
+    if (!matrix) {
+      return [];
+    }
+    type Aggregate = {
+      roomType: string;
+      boardType: string;
+      ageLabel: string;
+      currency: string;
+      values: Record<string, { total: number; count: number }>;
+    };
+    const grouped = new Map<string, Aggregate>();
+    for (const entry of matrix.entries) {
+      const period = String(entry.period_label || "").trim() || "Unassigned";
+      const roomType = String(entry.room_type || "").trim() || "N/A";
+      const boardType = String(entry.board_type || "").trim() || "N/A";
+      const ageLabel = String(entry.age_label || entry.age_bucket || "").trim() || "Adult";
+      const currency = String(entry.currency || "").trim() || "-";
+      const key = `${roomType}::${boardType}::${ageLabel}::${currency}`;
+
+      let bucket = grouped.get(key);
+      if (!bucket) {
+        bucket = { roomType, boardType, ageLabel, currency, values: {} };
+        grouped.set(key, bucket);
+      }
+      if (!bucket.values[period]) {
+        bucket.values[period] = { total: 0, count: 0 };
+      }
+      bucket.values[period].total += Number(entry.price || 0);
+      bucket.values[period].count += 1;
+    }
+
+    return Array.from(grouped.values()).sort((left, right) => {
+      return `${left.roomType} ${left.boardType} ${left.ageLabel}`.localeCompare(
+        `${right.roomType} ${right.boardType} ${right.ageLabel}`,
+        undefined,
+        { sensitivity: "base" },
+      );
+    });
+  }, [matrix]);
 
   const openUploadedFile = useCallback(async () => {
     if (!contract) {
@@ -346,6 +512,129 @@ export function ContractDetailPage() {
                 </Table>
               </div>
             )}
+          </SectionCard>
+
+          <SectionCard
+            title="Price Matrix & Promotion Impact"
+            description="Room/board/period matrix for this contract with optional promotion-adjusted view."
+          >
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4 rounded border-border"
+                    checked={includePromotions}
+                    onChange={(event) => setIncludePromotions(event.target.checked)}
+                  />
+                  Include promotions
+                </label>
+                <Badge variant="outline">periods {periodLabels.length}</Badge>
+                <Badge variant="outline">entries {matrix?.entries.length ?? 0}</Badge>
+                <Button size="sm" variant="outline" onClick={() => loadMatrix()} disabled={matrixLoading}>
+                  {matrixLoading ? "Loading matrix..." : "Refresh matrix"}
+                </Button>
+              </div>
+
+              {promotions.length ? (
+                <div className="grid gap-1 md:grid-cols-2 xl:grid-cols-3">
+                  {promotions.map((promotion) => {
+                    const checked = selectedPromotionIds.includes(promotion.id);
+                    return (
+                      <label key={promotion.id} className="flex cursor-pointer items-start gap-2 rounded-md border border-border/60 p-2 text-xs hover:bg-muted/40">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 size-4 rounded border-border"
+                          checked={checked}
+                          onChange={(event) => onTogglePromotionFilter(promotion.id, event.target.checked)}
+                        />
+                        <span className="leading-tight">
+                          <span className="block font-medium text-foreground">{promotion.offer_name}</span>
+                          <span className="text-muted-foreground">
+                            {promotion.discount_percent ?? 0}% · {promotion.scope}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No promotions available for this contract.</p>
+              )}
+
+              {matrixRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No matrix entries available yet for this contract.</p>
+              ) : (
+                <div className="overflow-x-auto rounded-lg border border-border/80">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Room</TableHead>
+                        <TableHead>Board</TableHead>
+                        <TableHead>Age</TableHead>
+                        <TableHead>Currency</TableHead>
+                        {periodLabels.map((period) => (
+                          <TableHead key={period}>{period}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {matrixRows.map((row) => (
+                        <TableRow key={`${row.roomType}-${row.boardType}-${row.ageLabel}-${row.currency}`}>
+                          <TableCell>{row.roomType}</TableCell>
+                          <TableCell>{row.boardType}</TableCell>
+                          <TableCell>{row.ageLabel}</TableCell>
+                          <TableCell>{row.currency}</TableCell>
+                          {periodLabels.map((period) => {
+                            const value = row.values[period];
+                            const price = value ? value.total / value.count : null;
+                            return <TableCell key={period}>{price == null ? "-" : price.toFixed(2)}</TableCell>;
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Promotion AI Ingestion (Contract Scope)"
+            description="Upload a promotion file and apply AI-parsed promotion rules to this contract."
+          >
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label>Operator code</Label>
+                <Input value={promotionOperatorCode} onChange={(event) => setPromotionOperatorCode(event.target.value)} />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Offer file</Label>
+                <Input
+                  type="file"
+                  accept=".pdf,.txt,.eml,.doc,.docx"
+                  onChange={(event) => setPromotionOfferFile(event.target.files?.[0] ?? null)}
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button type="button" onClick={() => onIngestPromotion()} disabled={ingestingPromotion || !promotionOfferFile}>
+                {ingestingPromotion ? "Ingesting..." : "AI ingest promotion and update rules"}
+              </Button>
+              <Badge variant="outline">applies to current contract</Badge>
+              <Badge variant="outline">related contracts {relatedContracts.length}</Badge>
+            </div>
+
+            {lastPromotionIngest ? (
+              <div className="mt-3 rounded-lg border border-border/80 bg-muted/20 p-3 text-sm">
+                <p className="font-semibold">{lastPromotionIngest.analysis_summary}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Promotion: {lastPromotionIngest.promotion.offer_name} · {lastPromotionIngest.promotion.discount_percent ?? 0}% ·
+                  impacted contracts: {lastPromotionIngest.impacted_contract_ids.length}
+                </p>
+              </div>
+            ) : null}
           </SectionCard>
 
           <SectionCard title="Sync Runs" description="Recent Fidelio/third-party sync activity for this contract.">

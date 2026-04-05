@@ -17,7 +17,6 @@ type Crumb = {
 const ROUTE_LABELS: Record<string, string> = {
   "/app": "kanika-demo",
   "/app/contracts": "Contracts",
-  "/app/price-lists": "Price Lists",
   "/app/pricing-ingestion": "Pricing AI",
   "/app/reconciliations": "Reconciliations",
   "/app/demo-documentation": "Demo Documentation",

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { BookOpenText, Bot, Building2, CalendarDays, Database, FileSpreadsheet, FileSearch, GalleryVerticalEnd, MailPlus, Plus, Settings2, Sparkles, Users, X } from "lucide-react";
+import { BookOpenText, Bot, Building2, Database, FileSpreadsheet, FileSearch, GalleryVerticalEnd, MailPlus, Plus, Settings2, Sparkles, Users, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router-dom";
 
@@ -35,7 +35,6 @@ const navigationGroups: NavigationGroup[] = [
     label: "Contract Management",
     items: [
       { label: "Contracts", to: "/app/contracts", icon: FileSearch },
-      { label: "Price Lists", to: "/app/price-lists", icon: CalendarDays },
       { label: "Pricing AI", to: "/app/pricing-ingestion", icon: Bot },
       { label: "Reconciliations", to: "/app/reconciliations", icon: FileSpreadsheet },
     ],

@@ -139,8 +139,17 @@ function ResultsTable({ rows }: { rows: ValidationLineResult[] }) {
                     <p className="text-xs text-muted-foreground">
                       {row.hotel_code} · {row.operator_code}
                     </p>
+                    <p className="text-xs text-muted-foreground">
+                      booking {row.booking_code || row.reservation_id}
+                      {row.booking_date ? ` · ${formatDate(row.booking_date)}` : ""}
+                    </p>
                   </TableCell>
-                  <TableCell>{formatDate(row.stay_date)}</TableCell>
+                  <TableCell>
+                    <p>{formatDate(row.stay_date)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {row.check_in_date ? formatDate(row.check_in_date) : "-"} → {row.check_out_date ? formatDate(row.check_out_date) : "-"}
+                    </p>
+                  </TableCell>
                   <TableCell>
                     <span className="text-sm">
                       {row.pax_adults}A / {row.pax_children}C
@@ -192,6 +201,15 @@ function ResultsTable({ rows }: { rows: ValidationLineResult[] }) {
               </div>
 
               <div className="max-h-[75vh] space-y-4 overflow-y-auto p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">booking {selectedRow.booking_code || selectedRow.reservation_id}</Badge>
+                  <Badge variant="outline">booking date {selectedRow.booking_date ? formatDate(selectedRow.booking_date) : "-"}</Badge>
+                  <Badge variant="outline">
+                    stay window {selectedRow.check_in_date ? formatDate(selectedRow.check_in_date) : "-"} →{" "}
+                    {selectedRow.check_out_date ? formatDate(selectedRow.check_out_date) : "-"}
+                  </Badge>
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-3">
                   <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
                     <p className="text-xs text-muted-foreground">Expected</p>
@@ -753,11 +771,15 @@ export function ReconciliationsPage() {
     }
     const lines = selectedRows.map((row) => ({
       reservation_id: row.reservation_id,
+      booking_code: row.booking_code ?? row.reservation_id,
+      booking_date: row.booking_date ?? undefined,
       hotel_code: row.hotel_code,
       operator_code: row.operator_code,
       contract_id: row.contract_id,
       room_type: row.room_type,
       board_type: row.board_type,
+      check_in_date: row.check_in_date ?? undefined,
+      check_out_date: row.check_out_date ?? undefined,
       stay_date: row.stay_date,
       nights: row.nights,
       pax_adults: row.pax_adults,
@@ -1021,7 +1043,10 @@ export function ReconciliationsPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Reservation</TableHead>
+                        <TableHead>Booking Date</TableHead>
                         <TableHead>Stay Date</TableHead>
+                        <TableHead>Check-In</TableHead>
+                        <TableHead>Check-Out</TableHead>
                         <TableHead>Room</TableHead>
                         <TableHead>Board</TableHead>
                         <TableHead>Guests</TableHead>
@@ -1036,8 +1061,14 @@ export function ReconciliationsPage() {
                     <TableBody>
                       {reservations.map((row) => (
                         <TableRow key={row.id}>
-                          <TableCell>{row.reservation_id}</TableCell>
+                          <TableCell>
+                            <p>{row.reservation_id}</p>
+                            <p className="text-xs text-muted-foreground">booking {row.booking_code ?? row.reservation_id}</p>
+                          </TableCell>
+                          <TableCell>{row.booking_date ? formatDate(row.booking_date) : "-"}</TableCell>
                           <TableCell>{formatDate(row.stay_date)}</TableCell>
+                          <TableCell>{row.check_in_date ? formatDate(row.check_in_date) : "-"}</TableCell>
+                          <TableCell>{row.check_out_date ? formatDate(row.check_out_date) : "-"}</TableCell>
                           <TableCell>{row.room_type}</TableCell>
                           <TableCell>{row.board_type}</TableCell>
                           <TableCell>
@@ -1492,7 +1523,10 @@ export function ReconciliationsPage() {
                               <thead className="bg-muted/40">
                                 <tr>
                                   <th className="px-2 py-1 text-left">Reservation</th>
+                                  <th className="px-2 py-1 text-left">Booking Date</th>
                                   <th className="px-2 py-1 text-left">Stay Date</th>
+                                  <th className="px-2 py-1 text-left">Check-In</th>
+                                  <th className="px-2 py-1 text-left">Check-Out</th>
                                   <th className="px-2 py-1 text-left">Room</th>
                                   <th className="px-2 py-1 text-left">Board</th>
                                   <th className="px-2 py-1 text-right">Actual</th>
@@ -1502,8 +1536,14 @@ export function ReconciliationsPage() {
                               <tbody>
                                 {wizardMapping.lines.slice(0, 10).map((line, index) => (
                                   <tr key={`${line.reservation_id}-${line.stay_date}-${index}`} className="border-t border-border/50">
-                                    <td className="break-all px-2 py-1">{line.reservation_id}</td>
+                                    <td className="break-all px-2 py-1">
+                                      <p>{line.reservation_id}</p>
+                                      <p className="text-[11px] text-muted-foreground">booking {line.booking_code ?? line.reservation_id}</p>
+                                    </td>
+                                    <td className="break-words px-2 py-1">{line.booking_date ?? "-"}</td>
                                     <td className="break-words px-2 py-1">{line.stay_date}</td>
+                                    <td className="break-words px-2 py-1">{line.check_in_date ?? "-"}</td>
+                                    <td className="break-words px-2 py-1">{line.check_out_date ?? "-"}</td>
                                     <td className="break-words px-2 py-1">{line.room_type}</td>
                                     <td className="break-words px-2 py-1">{line.board_type}</td>
                                     <td className="px-2 py-1 text-right">{formatMoney(line.actual_price)}</td>

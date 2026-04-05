@@ -12,6 +12,7 @@ class HospitalityRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.hotels = db["hotels"]
         self.contracts = db["hospitality_contracts"]
+        self.contract_templates = db["hospitality_contract_templates"]
         self.contract_files = db["hospitality_contract_files"]
         self.promotions = db["hospitality_promotions"]
         self.rules = db["hospitality_rules"]
@@ -26,6 +27,9 @@ class HospitalityRepository:
     async def create_indexes(self) -> None:
         await self.contracts.create_index([("hotel_id", 1), ("created_at", -1)])
         await self.contracts.create_index([("operator_code", 1), ("hotel_code", 1), ("created_at", -1)])
+        await self.contract_templates.create_index([("operator_code", 1), ("hotel_code", 1), ("updated_at", -1)])
+        await self.contract_templates.create_index([("hotel_id", 1), ("operator_code", 1), ("updated_at", -1)])
+        await self.contract_templates.create_index([("is_active", 1), ("updated_at", -1)])
         await self.contract_files.create_index([("contract_id", 1)], unique=True)
         await self.contract_files.create_index([("updated_at", -1)])
         await self.promotions.create_index([("hotel_id", 1), ("created_at", -1)])
@@ -93,6 +97,57 @@ class HospitalityRepository:
         if not stored:
             raise RuntimeError("Upload limits settings could not be stored.")
         return serialize_document(stored)
+
+    async def create_contract_template(self, data: dict) -> dict:
+        result = await self.contract_templates.insert_one(self._mongo_compatible(data))
+        created = await self.contract_templates.find_one({"_id": result.inserted_id})
+        return serialize_document(created)
+
+    async def get_contract_template(self, template_id: str) -> dict | None:
+        if not ObjectId.is_valid(template_id):
+            return None
+        doc = await self.contract_templates.find_one({"_id": ObjectId(template_id)})
+        if not doc:
+            return None
+        return serialize_document(doc)
+
+    async def list_contract_templates(
+        self,
+        *,
+        hotel_id: str | None = None,
+        hotel_code: str | None = None,
+        operator_code: str | None = None,
+        include_inactive: bool = False,
+        limit: int = 500,
+    ) -> list[dict]:
+        query: dict = {}
+        if hotel_id and hotel_id.strip():
+            query["hotel_id"] = hotel_id.strip()
+        if hotel_code and hotel_code.strip():
+            query["hotel_code"] = hotel_code.strip().upper()
+        if operator_code and operator_code.strip():
+            query["operator_code"] = operator_code.strip().upper()
+        if not include_inactive:
+            query["is_active"] = True
+
+        items: list[dict] = []
+        effective_limit = min(max(int(limit), 1), 1000)
+        cursor = self.contract_templates.find(query).sort([("updated_at", -1), ("created_at", -1)]).limit(effective_limit)
+        async for doc in cursor:
+            items.append(serialize_document(doc))
+        return items
+
+    async def update_contract_template(self, template_id: str, updates: dict) -> dict | None:
+        if not ObjectId.is_valid(template_id):
+            return None
+        await self.contract_templates.update_one(
+            {"_id": ObjectId(template_id)},
+            {"$set": self._mongo_compatible(updates)},
+        )
+        updated = await self.contract_templates.find_one({"_id": ObjectId(template_id)})
+        if not updated:
+            return None
+        return serialize_document(updated)
 
     async def create_contract(self, data: dict) -> dict:
         result = await self.contracts.insert_one(self._mongo_compatible(data))

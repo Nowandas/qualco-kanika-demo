@@ -183,6 +183,73 @@ class AIPricingContentRecommendationRead(BaseModel):
     database_mapping: list[AIPricingDatabaseMappingRead] = Field(default_factory=list)
 
 
+class ContractTemplateReconciliationMapping(BaseModel):
+    booking_code_field: str = Field(default="reservation_id", min_length=1, max_length=120)
+    booking_date_field: str = Field(default="booking_date", min_length=1, max_length=120)
+    board_type_field: str = Field(default="board_type", min_length=1, max_length=120)
+    cost_field: str = Field(default="actual_price", min_length=1, max_length=120)
+    room_field: str = Field(default="room_type", min_length=1, max_length=120)
+    check_in_field: str = Field(default="check_in_date", min_length=1, max_length=120)
+    check_out_field: str = Field(default="check_out_date", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class ContractTemplateRead(BaseModel):
+    id: str
+    name: str
+    operator_code: str
+    hotel_id: str | None = None
+    hotel_code: str | None = None
+    season_label: str | None = None
+    source_contract_file_name: str | None = None
+    confidence: Literal["low", "medium", "high"] = "medium"
+    analysis_provider: Literal["openai"] = "openai"
+    analysis_model: str | None = None
+    analysis_usage: dict[str, Any] = Field(default_factory=dict)
+    extraction_schema: dict[str, Any] = Field(default_factory=dict)
+    mapping_instructions: str
+    database_mapping: list[AIPricingDatabaseMappingRead] = Field(default_factory=list)
+    reconciliation_mapping: ContractTemplateReconciliationMapping
+    required_reconciliation_fields: list[str] = Field(default_factory=list)
+    is_active: bool = True
+    created_by_user_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContractTemplateCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    operator_code: str = Field(min_length=2, max_length=50)
+    hotel_id: str | None = None
+    hotel_code: str | None = Field(default=None, min_length=2, max_length=50)
+    season_label: str | None = Field(default=None, max_length=80)
+    extraction_schema: dict[str, Any] = Field(default_factory=dict)
+    mapping_instructions: str = Field(min_length=4, max_length=20000)
+    database_mapping: list[AIPricingDatabaseMappingRead] = Field(default_factory=list)
+    reconciliation_mapping: ContractTemplateReconciliationMapping = Field(default_factory=ContractTemplateReconciliationMapping)
+    required_reconciliation_fields: list[str] = Field(default_factory=list)
+    confidence: Literal["low", "medium", "high"] = "medium"
+    analysis_model: str | None = Field(default=None, max_length=120)
+    analysis_usage: dict[str, Any] = Field(default_factory=dict)
+    source_contract_file_name: str | None = Field(default=None, max_length=255)
+    is_active: bool = True
+
+
+class ContractTemplateUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=160)
+    season_label: str | None = Field(default=None, max_length=80)
+    extraction_schema: dict[str, Any] | None = None
+    mapping_instructions: str | None = Field(default=None, min_length=4, max_length=20000)
+    database_mapping: list[AIPricingDatabaseMappingRead] | None = None
+    reconciliation_mapping: ContractTemplateReconciliationMapping | None = None
+    required_reconciliation_fields: list[str] | None = None
+    confidence: Literal["low", "medium", "high"] | None = None
+    analysis_model: str | None = Field(default=None, max_length=120)
+    analysis_usage: dict[str, Any] | None = None
+    source_contract_file_name: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
+
+
 class AIPricingExtractionRead(BaseModel):
     id: str
     file_name: str
@@ -268,11 +335,15 @@ class PriceListMatrixRead(BaseModel):
 
 class ValidationLineInput(BaseModel):
     reservation_id: str = Field(min_length=2, max_length=100)
+    booking_code: str | None = Field(default=None, max_length=100)
+    booking_date: date | None = None
     hotel_code: str = Field(min_length=2, max_length=50)
     operator_code: str = Field(min_length=2, max_length=50)
     contract_id: str
     room_type: str = Field(min_length=2, max_length=120)
     board_type: str = Field(min_length=1, max_length=80)
+    check_in_date: date | None = None
+    check_out_date: date | None = None
     stay_date: date
     nights: int = Field(default=1, ge=1, le=60)
     pax_adults: int = Field(default=2, ge=1, le=10)
@@ -375,8 +446,12 @@ class ReconciliationReservationRead(BaseModel):
     sheet_name: str | None = None
     source_system: str | None = None
     reservation_id: str
+    booking_code: str | None = None
+    booking_date: date | None = None
     room_type: str
     board_type: str
+    check_in_date: date | None = None
+    check_out_date: date | None = None
     stay_date: date
     nights: int
     pax_adults: int
@@ -410,10 +485,14 @@ class ReconciliationReservationBulkDeleteRead(BaseModel):
 
 class ValidationLineResult(BaseModel):
     reservation_id: str
+    booking_code: str | None = None
+    booking_date: date | None = None
     hotel_code: str
     operator_code: str
     room_type: str
     board_type: str
+    check_in_date: date | None = None
+    check_out_date: date | None = None
     stay_date: date
     nights: int = 1
     pax_adults: int = 2

@@ -12,7 +12,6 @@ import { DemoDocumentationPage } from "@/pages/demo-documentation-page";
 import { InvitationsPage } from "@/pages/invitations-page";
 import { LoginPage } from "@/pages/login-page";
 import { PasswordResetPage } from "@/pages/password-reset-page";
-import { PriceListsCalendarPage } from "@/pages/price-lists-calendar-page";
 import { PricingIngestionPage } from "@/pages/pricing-ingestion-page";
 import { ReconciliationsPage } from "@/pages/reconciliations-page";
 import { UsersPage } from "@/pages/users-page";
@@ -111,7 +110,7 @@ const router = createBrowserRouter(
         { index: true, element: <Navigate to="/app/contracts" replace /> },
         { path: "contracts", element: <ContractsPage /> },
         { path: "contracts/:contractId", element: <ContractDetailPage /> },
-        { path: "price-lists", element: <PriceListsCalendarPage /> },
+        { path: "price-lists", element: <Navigate to="/app/contracts" replace /> },
         { path: "pricing-ingestion", element: <PricingIngestionPage /> },
         { path: "reconciliations", element: <ReconciliationsPage /> },
         { path: "demo-documentation", element: <Navigate to="/app/demo-documentation/overview" replace /> },

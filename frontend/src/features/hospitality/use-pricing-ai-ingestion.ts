@@ -20,6 +20,7 @@ type AIPricingExtractParams = {
   model?: string;
   schemaJson?: string;
   mappingInstructions?: string;
+  templateId?: string;
 };
 
 type AIPricingPersistParams = {
@@ -113,6 +114,9 @@ export function usePricingAiIngestion() {
       }
       if (params.mappingInstructions) {
         formData.append("mapping_instructions", params.mappingInstructions);
+      }
+      if (params.templateId) {
+        formData.append("template_id", params.templateId);
       }
 
       const response = await api.post<AIPricingExtractionRun>("/hospitality/ai/pricing/extract", formData, {

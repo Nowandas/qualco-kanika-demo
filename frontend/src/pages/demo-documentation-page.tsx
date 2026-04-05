@@ -141,17 +141,17 @@ const overviewImplementationRows = [
   },
   {
     area: "Pricing AI Pipeline",
-    ui: "Pricing AI page with recommendation, extraction, persist",
-    api: "recommend-content, extract, persist endpoints",
-    data: "hospitality_ai_extractions + contracts + rules",
-    value: "Rapid onboarding of operator price lists with review-before-persist.",
+    ui: "Pricing AI page with recommendation, template generation, extraction, persist",
+    api: "recommend-content, contract-templates, extract, persist endpoints",
+    data: "hospitality_contract_templates + hospitality_ai_extractions + contracts + rules",
+    value: "Reusable operator/hotel templates and rapid onboarding with review-before-persist.",
   },
   {
     area: "Price Matrix & Promotions",
-    ui: "Calendar matrix (month/week/quarter/year/custom) + promo toggles",
+    ui: "Contract detail matrix (room/board/period) + promo toggles + header quick actions",
     api: "price-matrix + promotions ingest/list/ai-ingest",
     data: "hospitality_promotions + generated promotion rules",
-    value: "Visual control of base vs adjusted commercial pricing.",
+    value: "Contract-scoped control of base vs adjusted commercial pricing.",
   },
   {
     area: "Reconciliation",
@@ -226,17 +226,17 @@ const businessStakeholders = [
   {
     role: "Revenue Management",
     objectives: "Protect margin, enforce contracted pricing logic, monitor operator performance.",
-    pages: "Contracts, Price Lists, Reconciliations, Business docs",
+    pages: "Contracts (detail matrix), Reconciliations, Business docs",
   },
   {
     role: "Contracting / Commercial",
     objectives: "Onboard new contracts quickly, encode supplements/discounts correctly, handle offer updates.",
-    pages: "Pricing AI, Contracts, Price Lists",
+    pages: "Pricing AI, Contracts (detail matrix + promo actions)",
   },
   {
     role: "Accounting / Finance",
     objectives: "Validate invoiced or posted rates against expected contracted outcomes.",
-    pages: "Reconciliations, Contracts, Price Lists",
+    pages: "Reconciliations, Contracts (detail matrix)",
   },
   {
     role: "Admin / Operations",
@@ -358,22 +358,15 @@ const frontendPageRows = [
     route: "/app/contracts/:contractId",
     page: "ContractDetailPage",
     hook: "detail state + direct API load",
-    calls: "GET /hospitality/contracts/{id}, GET /hospitality/rules, GET /hospitality/contracts/{id}/price-matrix",
-    focus: "Contract terms, rules, and price-list context in one place.",
-  },
-  {
-    route: "/app/price-lists",
-    page: "PriceListsCalendarPage",
-    hook: "usePriceListCalendar",
-    calls: "GET /hospitality/contracts, GET /hospitality/contracts/{id}/price-matrix, GET/POST /hospitality/promotions*",
-    focus: "Calendar matrix views and promotion on/off comparison.",
+    calls: "GET /hospitality/contracts/{id}, GET /hospitality/rules, GET /hospitality/contracts/{id}/price-matrix, POST /hospitality/promotions/ai-ingest",
+    focus: "Contract terms, promotion impact, and price matrix in one place.",
   },
   {
     route: "/app/pricing-ingestion",
     page: "PricingIngestionPage",
     hook: "usePricingAiIngestion",
-    calls: "POST /hospitality/ai/pricing/recommend-content, /extract, /persist",
-    focus: "AI content analysis, mapping guidance, extraction and persistence.",
+    calls: "POST /hospitality/ai/pricing/recommend-content, /extract, /persist, /contract-templates/generate",
+    focus: "AI analysis, template creation, extraction and persistence.",
   },
   {
     route: "/app/reconciliations",
@@ -412,7 +405,7 @@ const frontendPatterns = [
   {
     title: "Feature Hooks for UI Logic",
     detail:
-      "Complex data and action orchestration lives in hooks (contracts, pricing AI, price lists, reconciliations, users, invitations) to keep pages focused on rendering.",
+      "Complex data and action orchestration lives in hooks (contracts, pricing AI, reconciliations, users, invitations) to keep pages focused on rendering.",
   },
   {
     title: "Reusable UI System",
@@ -687,7 +680,7 @@ function OverviewSection() {
           <div className="rounded-xl border border-border/70 p-3">
             <p className="font-semibold">3. Review Price Matrix and Promotions</p>
             <p className="text-muted-foreground">
-              Validate resulting price lists across date views and optionally ingest promotions to see adjusted values.
+              Open the contract detail matrix to inspect room/board/period pricing and optionally ingest promotions for adjusted values.
             </p>
           </div>
           <div className="rounded-xl border border-border/70 p-3">
@@ -974,7 +967,7 @@ function FrontendSection() {
           <div className="rounded-xl border border-border/70 p-3">
             <p className="text-sm font-semibold">Contract Management</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Contracts, Price Lists, Pricing AI and Reconciliations run the commercial operations lifecycle.
+              Contracts, Pricing AI and Reconciliations run the commercial lifecycle, with matrix and promo actions in contract detail.
             </p>
           </div>
           <div className="rounded-xl border border-border/70 p-3">

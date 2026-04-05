@@ -198,6 +198,40 @@ export interface AIPricingContentRecommendation {
   database_mapping: AIPricingDatabaseMapping[];
 }
 
+export interface ContractTemplateReconciliationMapping {
+  booking_code_field: string;
+  booking_date_field: string;
+  board_type_field: string;
+  cost_field: string;
+  room_field: string;
+  check_in_field: string;
+  check_out_field: string;
+  notes?: string | null;
+}
+
+export interface ContractTemplate {
+  id: string;
+  name: string;
+  operator_code: string;
+  hotel_id?: string | null;
+  hotel_code?: string | null;
+  season_label?: string | null;
+  source_contract_file_name?: string | null;
+  confidence: "low" | "medium" | "high";
+  analysis_provider: "openai";
+  analysis_model?: string | null;
+  analysis_usage?: Record<string, unknown>;
+  extraction_schema: Record<string, unknown>;
+  mapping_instructions: string;
+  database_mapping: AIPricingDatabaseMapping[];
+  reconciliation_mapping: ContractTemplateReconciliationMapping;
+  required_reconciliation_fields: string[];
+  is_active: boolean;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AIPricingExtractionRun {
   id: string;
   file_name: string;
@@ -287,11 +321,15 @@ export interface SyncRun {
 
 export interface ValidationLineInput {
   reservation_id: string;
+  booking_code?: string | null;
+  booking_date?: string | null;
   hotel_code: string;
   operator_code: string;
   contract_id: string;
   room_type: string;
   board_type: string;
+  check_in_date?: string | null;
+  check_out_date?: string | null;
   stay_date: string;
   nights: number;
   pax_adults: number;
@@ -303,10 +341,14 @@ export interface ValidationLineInput {
 
 export interface ValidationLineResult {
   reservation_id: string;
+  booking_code?: string | null;
+  booking_date?: string | null;
   hotel_code: string;
   operator_code: string;
   room_type: string;
   board_type: string;
+  check_in_date?: string | null;
+  check_out_date?: string | null;
   stay_date: string;
   nights: number;
   pax_adults: number;
@@ -473,8 +515,12 @@ export interface ReconciliationReservation {
   sheet_name?: string | null;
   source_system?: string | null;
   reservation_id: string;
+  booking_code?: string | null;
+  booking_date?: string | null;
   room_type: string;
   board_type: string;
+  check_in_date?: string | null;
+  check_out_date?: string | null;
   stay_date: string;
   nights: number;
   pax_adults: number;

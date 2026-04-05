@@ -1,6 +1,8 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Bot, Database, FileUp, Lightbulb, Sparkles, WandSparkles } from "lucide-react";
 
+import { api } from "@/api/client";
+import type { ContractTemplate } from "@/api/types";
 import { PageShell, SectionCard } from "@/components/app/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -146,6 +148,11 @@ export function PricingIngestionPage() {
   const [schemaText, setSchemaText] = useState(DEFAULT_SCHEMA);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [reviewedJson, setReviewedJson] = useState("{}");
+  const [templates, setTemplates] = useState<ContractTemplate[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const [generatingTemplate, setGeneratingTemplate] = useState(false);
 
   const usageSummary = useMemo(() => {
     if (!lastExtraction) {
@@ -157,6 +164,53 @@ export function PricingIngestionPage() {
     const total = Number(usage.total_tokens ?? 0);
     return `prompt ${prompt} · completion ${completion} · total ${total}`;
   }, [lastExtraction]);
+
+  useEffect(() => {
+    if (!isHotelSelected || !selectedHotel || !operatorCode.trim()) {
+      setTemplates([]);
+      setSelectedTemplateId("");
+      return;
+    }
+    let cancelled = false;
+    const loadTemplates = async () => {
+      setLoadingTemplates(true);
+      try {
+        const response = await api.get<ContractTemplate[]>("/hospitality/contract-templates", {
+          params: {
+            hotel_id: selectedHotel.id,
+            operator_code: operatorCode.trim().toUpperCase(),
+            include_inactive: false,
+            limit: 300,
+          },
+        });
+        if (cancelled) {
+          return;
+        }
+        setTemplates(response.data);
+        setSelectedTemplateId((previous) => (response.data.some((item) => item.id === previous) ? previous : ""));
+      } catch (error) {
+        if (!cancelled) {
+          notifyError(error, "Could not load contract templates.");
+          setTemplates([]);
+          setSelectedTemplateId("");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingTemplates(false);
+        }
+      }
+    };
+
+    void loadTemplates();
+    return () => {
+      cancelled = true;
+    };
+  }, [isHotelSelected, selectedHotel, operatorCode]);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedTemplateId) ?? null,
+    [templates, selectedTemplateId],
+  );
 
   const onExtract = async (event: FormEvent) => {
     event.preventDefault();
@@ -178,6 +232,7 @@ export function PricingIngestionPage() {
       model: model.trim(),
       schemaJson: schemaText,
       mappingInstructions,
+      templateId: selectedTemplateId || undefined,
     });
 
     if (extraction) {
@@ -216,6 +271,66 @@ export function PricingIngestionPage() {
     setMappingInstructions(lastRecommendation.suggested_mapping_instructions);
     setSchemaText(recommendedSchemaText);
     notifySuccess("Applied recommended schema and mapping instructions to extraction setup.");
+  };
+
+  const onApplyTemplate = () => {
+    if (!selectedTemplate) {
+      notifyInfo("Select a template first.");
+      return;
+    }
+    setSchemaText(toPrettyJson(selectedTemplate.extraction_schema));
+    setMappingInstructions(selectedTemplate.mapping_instructions);
+    if (selectedTemplate.analysis_model) {
+      setModel(selectedTemplate.analysis_model);
+    }
+    notifySuccess(`Applied template: ${selectedTemplate.name}`);
+  };
+
+  const onGenerateTemplate = async () => {
+    if (!isHotelSelected || !selectedHotel) {
+      notifyInfo("Select a hotel from the sidebar first.");
+      return;
+    }
+    if (!selectedFile) {
+      notifyInfo("Upload a contract file first.");
+      return;
+    }
+    if (generatingTemplate) {
+      return;
+    }
+
+    const suggestedName = templateName.trim() || `${operatorCode.trim().toUpperCase()} ${seasonLabel.trim() || "Template"} AI`;
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("template_name", suggestedName);
+    formData.append("hotel_id", selectedHotel.id);
+    formData.append("hotel_code", selectedHotel.code);
+    formData.append("operator_code", operatorCode.trim());
+    if (seasonLabel.trim()) {
+      formData.append("season_label", seasonLabel.trim());
+    }
+    formData.append("analysis_mode", recommendationMode);
+
+    setGeneratingTemplate(true);
+    try {
+      const response = await api.post<ContractTemplate>("/hospitality/contract-templates/generate", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      const created = response.data;
+      setTemplates((previous) => [created, ...previous.filter((item) => item.id !== created.id)]);
+      setSelectedTemplateId(created.id);
+      setTemplateName(created.name);
+      setSchemaText(toPrettyJson(created.extraction_schema));
+      setMappingInstructions(created.mapping_instructions);
+      if (created.analysis_model) {
+        setModel(created.analysis_model);
+      }
+      notifySuccess(`Template created: ${created.name}`);
+    } catch (error) {
+      notifyError(error, "Could not generate AI contract template.");
+    } finally {
+      setGeneratingTemplate(false);
+    }
   };
 
   const recommendationSignals = useMemo(() => {
@@ -369,6 +484,81 @@ export function PricingIngestionPage() {
             </div>
             {!isHotelSelected ? (
               <p className="text-xs text-amber-700">Select a hotel from the sidebar to enable contract upload.</p>
+            ) : null}
+          </div>
+
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">AI Template Creator</p>
+                <p className="text-xs text-muted-foreground">
+                  Create reusable extraction templates per operator/hotel, then apply them in one click for future contracts.
+                </p>
+              </div>
+              <Badge variant="outline">{loadingTemplates ? "Loading templates..." : `${templates.length} template(s)`}</Badge>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>Saved templates</Label>
+                <Select
+                  value={selectedTemplateId || "none"}
+                  onValueChange={(value) => setSelectedTemplateId(value === "none" ? "" : value)}
+                  disabled={loadingTemplates || templates.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={templates.length ? "Select template" : "No templates yet"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No template</SelectItem>
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name} · {template.operator_code} {template.season_label ? `· ${template.season_label}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={onApplyTemplate}
+                  disabled={!selectedTemplate}
+                >
+                  Apply template
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label>New template name</Label>
+                <Input
+                  value={templateName}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                  placeholder={`${operatorCode || "OPERATOR"} ${seasonLabel || "Template"} AI`}
+                  disabled={generatingTemplate}
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  className="w-full"
+                  onClick={onGenerateTemplate}
+                  disabled={!selectedFile || !isHotelSelected || generatingTemplate}
+                >
+                  {generatingTemplate ? "Generating..." : "Generate from file"}
+                </Button>
+              </div>
+            </div>
+
+            {selectedTemplate ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Active template requires reconciliation fields: {selectedTemplate.required_reconciliation_fields.join(", ")}
+              </p>
             ) : null}
           </div>
 

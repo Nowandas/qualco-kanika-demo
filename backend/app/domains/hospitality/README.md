@@ -16,6 +16,11 @@ Core hospitality workflow domain:
 - `GET /api/v1/hospitality/overview`
 - `GET /api/v1/hospitality/upload-limits`
 - `PATCH /api/v1/hospitality/upload-limits`
+- `GET /api/v1/hospitality/contract-templates`
+- `POST /api/v1/hospitality/contract-templates`
+- `POST /api/v1/hospitality/contract-templates/generate`
+- `GET /api/v1/hospitality/contract-templates/{template_id}`
+- `PATCH /api/v1/hospitality/contract-templates/{template_id}`
 - `POST /api/v1/hospitality/contracts/ingest`
 - `POST /api/v1/hospitality/contracts/ingest-bundle`
 - `POST /api/v1/hospitality/contracts/ingest-from-paths`
@@ -72,4 +77,6 @@ Core hospitality workflow domain:
 
 - Sync is implemented as a simulated adapter payload and run log.
 - Validation logic is rule-driven and highlights likely PMS/configuration mismatches.
+- Reconciliation rows now preserve canonical booking fields (`booking_code`, `booking_date`, `room_type`, `board_type`, `actual_price`, `check_in_date`, `check_out_date`) for audit traceability.
+- Contract templates are operator/hotel scoped and can be generated from uploads via AI recommendation output.
 - Data is persisted under `hospitality_*` Mongo collections.

@@ -10,9 +10,10 @@ React + Vite admin UI for `kanika-demo`.
 - Invitations management (create/list/copy token and link).
 - Hotel-scoped hospitality operations workspace:
   - Contract and promotion ingestion.
-  - AI pricing extraction and persistence.
-  - Price-list calendar matrix.
-  - Reconciliation wizard (workbook preview, AI mapping, import, validation).
+  - AI pricing extraction and persistence with reusable contract templates.
+  - Contract detail matrix (room/board/period) and promotion impact preview.
+  - Reconciliation wizard (workbook preview, AI mapping, import, validation) with booking/check-in/check-out trace fields.
+  - Header quick actions (hotel/contract picker + contract-scoped promo AI ingest).
 - Admin upload-limit controls:
   - Settings button in header opens modal.
   - Updates backend-enforced limits for contract/promotion/reconciliation/pricing AI uploads.
@@ -35,7 +36,6 @@ React + Vite admin UI for `kanika-demo`.
 - `src/features/invitations/use-invitations-management.ts` invitations workflow logic.
 - `src/features/hospitality/use-pricing-ai-ingestion.ts` AI pricing extraction workflow logic.
 - `src/features/hospitality/use-contracts-explorer.ts` contracts search/filter/sort workflow logic.
-- `src/features/hospitality/use-price-list-calendar.ts` price matrix filtering + calendar shaping logic.
 - `src/features/hospitality/use-reconciliations.ts` reconciliation upload/import/validation workflow logic.
 - `src/lib/notify.tsx` toast notification + API error sanitization.
 - `src/api/client.ts` axios setup, timeout, CSRF injection, base URL guardrails.

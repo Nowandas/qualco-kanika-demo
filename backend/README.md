@@ -68,6 +68,11 @@ On startup, backend ensures:
 - `PATCH /api/v1/hotels/{hotel_id}` (admin)
 - `GET /api/v1/hospitality/upload-limits` (admin)
 - `PATCH /api/v1/hospitality/upload-limits` (admin)
+- `GET /api/v1/hospitality/contract-templates` (admin)
+- `POST /api/v1/hospitality/contract-templates` (admin)
+- `POST /api/v1/hospitality/contract-templates/generate` (admin)
+- `GET /api/v1/hospitality/contract-templates/{template_id}` (admin)
+- `PATCH /api/v1/hospitality/contract-templates/{template_id}` (admin)
 - `POST /api/v1/hospitality/contracts/ingest`
 - `POST /api/v1/hospitality/contracts/ingest-bundle`
 - `POST /api/v1/hospitality/contracts/ingest-from-paths`
@@ -91,3 +96,15 @@ On startup, backend ensures:
 - `OPENAI_PRICING_MODEL` (default extraction model)
 
 For upstream AI failures, API error payloads always include a reference ID. In local/dev/test only, sanitized provider response details are also appended to help debugging.
+
+## Reconciliation Canonical Dataset
+
+Reconciliation import/validation supports canonical booking fields used for auditing:
+
+- `booking_code`
+- `booking_date`
+- `board_type`
+- `actual_price` (cost)
+- `room_type`
+- `check_in_date`
+- `check_out_date`

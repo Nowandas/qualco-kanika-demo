@@ -9,16 +9,18 @@ Hospitality contract and pricing operations demo with MongoDB persistence and Op
 - Hotel master data management and hotel-scoped views.
 - Contract ingestion from file uploads and allowlisted seeded paths.
 - AI contract content recommendation (recommended data, schema, mapping instructions).
+- AI contract template creator (operator/hotel scoped reusable extraction templates).
 - AI extraction and persistence of contract pricing structures.
-- Price-list calendar matrix with promotion toggle views.
+- Contract detail matrix by room/board/period with promotion toggle views.
 - Promotion ingestion (including AI email-style ingestion) applied to one or more contracts.
-- Reconciliation workbook wizard, persisted reservation rows, and expected-vs-actual validation.
+- Reconciliation workbook wizard, persisted reservation rows, canonical booking/check-in/out fields, and expected-vs-actual validation.
+- Header quick actions dropdown for hotel/contract selection and contract-scoped promo AI upload.
 - Admin-managed upload limits (Settings modal in app header).
 - Contract source file retrieval from contracts list and contract detail.
 
 ## Main UI Navigation
 
-- Contract Management: Contracts, Price Lists, Pricing AI, Reconciliations.
+- Contract Management: Contracts, Pricing AI, Reconciliations.
 - Users: Users, Invitations.
 - Reference: Demo Documentation (Overview), Business, Frontend, Backend.
 
@@ -100,6 +102,11 @@ Key groups:
 
 - `GET /api/v1/hospitality/upload-limits`
 - `PATCH /api/v1/hospitality/upload-limits`
+- `GET /api/v1/hospitality/contract-templates`
+- `POST /api/v1/hospitality/contract-templates`
+- `POST /api/v1/hospitality/contract-templates/generate`
+- `GET /api/v1/hospitality/contract-templates/{template_id}`
+- `PATCH /api/v1/hospitality/contract-templates/{template_id}`
 - `POST /api/v1/hospitality/contracts/ingest`
 - `POST /api/v1/hospitality/contracts/ingest-bundle`
 - `POST /api/v1/hospitality/contracts/ingest-from-paths`

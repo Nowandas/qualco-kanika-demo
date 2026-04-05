@@ -18,6 +18,9 @@ from app.domains.hospitality.schemas import (
     AlertResolveRequest,
     ContractDocumentRead,
     ContractPathIngestionRequest,
+    ContractTemplateCreateRequest,
+    ContractTemplateRead,
+    ContractTemplateUpdateRequest,
     ContractPerformanceReportRow,
     DiscrepancyReportRow,
     HospitalityOverviewRead,
@@ -80,6 +83,80 @@ async def update_upload_limits(
         pricing_ai_mb=payload.pricing_ai_mb,
         updated_by_user_id=admin_user["id"],
     )
+
+
+@router.get("/contract-templates", response_model=list[ContractTemplateRead], dependencies=[Depends(require_admin)])
+async def list_contract_templates(
+    hotel_id: str | None = Query(default=None),
+    hotel_code: str | None = Query(default=None),
+    operator_code: str | None = Query(default=None),
+    include_inactive: bool = Query(default=False),
+    limit: int = Query(default=500, ge=1, le=1000),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> list[dict]:
+    service = HospitalityService(db)
+    return await service.list_contract_templates(
+        hotel_id=hotel_id,
+        hotel_code=hotel_code,
+        operator_code=operator_code,
+        include_inactive=include_inactive,
+        limit=limit,
+    )
+
+
+@router.post("/contract-templates", response_model=ContractTemplateRead)
+async def create_contract_template(
+    payload: ContractTemplateCreateRequest,
+    admin_user: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    service = HospitalityService(db)
+    return await service.create_contract_template(payload=payload, created_by_user_id=admin_user["id"])
+
+
+@router.post("/contract-templates/generate", response_model=ContractTemplateRead)
+async def generate_contract_template(
+    file: UploadFile = File(...),
+    template_name: str | None = Form(default=None),
+    hotel_id: str | None = Form(default=None),
+    hotel_code: str | None = Form(default=None),
+    operator_code: str = Form(...),
+    season_label: str | None = Form(default=None),
+    analysis_mode: Literal["standard", "faster"] = Form(default="standard"),
+    admin_user: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    service = HospitalityService(db)
+    return await service.generate_contract_template_from_upload(
+        upload_file=file,
+        template_name=template_name,
+        hotel_id=hotel_id,
+        hotel_code=hotel_code,
+        operator_code=operator_code,
+        season_label=season_label,
+        recommendation_mode=analysis_mode,
+        created_by_user_id=admin_user["id"],
+    )
+
+
+@router.get("/contract-templates/{template_id}", response_model=ContractTemplateRead, dependencies=[Depends(require_admin)])
+async def get_contract_template(
+    template_id: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    service = HospitalityService(db)
+    return await service.get_contract_template(template_id=template_id)
+
+
+@router.patch("/contract-templates/{template_id}", response_model=ContractTemplateRead)
+async def update_contract_template(
+    template_id: str,
+    payload: ContractTemplateUpdateRequest,
+    _: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    service = HospitalityService(db)
+    return await service.update_contract_template(template_id=template_id, payload=payload)
 
 
 @router.post("/contracts/ingest", response_model=ContractDocumentRead)
@@ -297,6 +374,7 @@ async def ai_extract_pricing(
     model: str | None = Form(default=None),
     schema_json: str | None = Form(default=None),
     mapping_instructions: str | None = Form(default=None),
+    template_id: str | None = Form(default=None),
     admin_user: dict = Depends(require_admin),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
@@ -327,6 +405,7 @@ async def ai_extract_pricing(
         model=model,
         schema_override=schema_override,
         mapping_instructions=mapping_instructions,
+        template_id=template_id,
         created_by_user_id=admin_user["id"],
     )
 
