@@ -37,6 +37,7 @@ type AIPricingContentRecommendationParams = {
   hotelCode?: string;
   operatorCode: string;
   seasonLabel?: string;
+  analysisMode?: "standard" | "faster";
 };
 
 export function usePricingAiIngestion() {
@@ -65,6 +66,9 @@ export function usePricingAiIngestion() {
       formData.append("operator_code", params.operatorCode);
       if (params.seasonLabel) {
         formData.append("season_label", params.seasonLabel);
+      }
+      if (params.analysisMode) {
+        formData.append("analysis_mode", params.analysisMode);
       }
 
       const response = await api.post<AIPricingContentRecommendation>("/hospitality/ai/pricing/recommend-content", formData, {

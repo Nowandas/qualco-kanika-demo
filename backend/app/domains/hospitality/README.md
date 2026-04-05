@@ -57,7 +57,7 @@ Core hospitality workflow domain:
   - contract: 10 MB
   - pricing AI: 10 MB
   - promotion: 8 MB
-  - reconciliation: 8 MB
+  - reconciliation: 20 MB
 - Contract bundle upload: max 20 files per request.
 - File extension allowlists are enforced per ingestion type.
 - Path-based ingestion is restricted outside local environments and must remain under `SEED_INGESTION_ROOT`.

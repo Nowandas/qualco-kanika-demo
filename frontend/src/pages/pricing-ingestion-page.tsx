@@ -76,6 +76,11 @@ const DEFAULT_SCHEMA = JSON.stringify(
 );
 
 const MODEL_OPTIONS = ["gpt-5.2", "gpt-5.4", "gpt-5.4-mini", "gpt-4.1", "gpt-4.1-mini"];
+const RECOMMENDATION_MODE_OPTIONS = [
+  { value: "standard", label: "Standard", description: "Full recommendation context (current behavior)." },
+  { value: "faster", label: "Faster", description: "Shorter recommendation context for lower latency." },
+] as const;
+type RecommendationMode = (typeof RECOMMENDATION_MODE_OPTIONS)[number]["value"];
 
 function toPrettyJson(value: unknown): string {
   try {
@@ -134,6 +139,7 @@ export function PricingIngestionPage() {
   const [operatorCode, setOperatorCode] = useState("JET2");
   const [seasonLabel, setSeasonLabel] = useState("S25");
   const [model, setModel] = useState("gpt-5.2");
+  const [recommendationMode, setRecommendationMode] = useState<RecommendationMode>("standard");
   const [mappingInstructions, setMappingInstructions] = useState(
     "Treat input as a tour-operator commercial terms contract. Extract room types, seasonal pricing periods, board types, pricing lines, extra guest pricing rules (including 2nd child / 3rd adult logic), discounts, supplements, marketing contributions and promotional offers. For each extra guest rule capture guest_type, guest_position, age_min/age_max (if present), and percent_of_adult.",
   );
@@ -195,6 +201,7 @@ export function PricingIngestionPage() {
       hotelCode: selectedHotel.code,
       operatorCode: operatorCode.trim(),
       seasonLabel: seasonLabel.trim(),
+      analysisMode: recommendationMode,
     });
     if (!recommendation) {
       return;
@@ -373,16 +380,40 @@ export function PricingIngestionPage() {
                   Upload a pricelist contract first, then run content feedback to get recommended data, schema, and mapping guidance before persistence.
                 </p>
               </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onRecommendModel}
-                disabled={recommendingModel || extracting || persisting || !selectedFile || !isHotelSelected}
-              >
-                <WandSparkles className="mr-1.5 size-4" />
-                {recommendingModel ? "Analyzing..." : "Analyze content"}
-              </Button>
+              <div className="flex items-end gap-2">
+                <div className="min-w-[170px] space-y-1">
+                  <Label className="text-xs">Analysis mode</Label>
+                  <Select
+                    value={recommendationMode}
+                    onValueChange={(value) => setRecommendationMode(value as RecommendationMode)}
+                    disabled={recommendingModel || extracting || persisting}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECOMMENDATION_MODE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onRecommendModel}
+                  disabled={recommendingModel || extracting || persisting || !selectedFile || !isHotelSelected}
+                >
+                  <WandSparkles className="mr-1.5 size-4" />
+                  {recommendingModel ? "Analyzing..." : "Analyze content"}
+                </Button>
+              </div>
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {RECOMMENDATION_MODE_OPTIONS.find((option) => option.value === recommendationMode)?.description}
+            </p>
 
             {lastRecommendation ? (
               <div className="mt-3 space-y-2 text-sm">

@@ -389,9 +389,16 @@ CANONICAL_MAPPING_REQUIREMENTS = (
     "numeric values and for extra_guest_rules use percent_of_adult numeric values whenever available."
 )
 
+RECOMMENDATION_MODE_STANDARD = "standard"
+RECOMMENDATION_MODE_FASTER = "faster"
+STANDARD_RECOMMEND_TEXT_WINDOW_CHARS = 120_000
+STANDARD_RECOMMEND_BASELINE_WINDOW_CHARS = 60_000
+FASTER_RECOMMEND_TEXT_WINDOW_CHARS = 40_000
+FASTER_RECOMMEND_BASELINE_WINDOW_CHARS = 12_000
+
 MAX_CONTRACT_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_PROMOTION_UPLOAD_BYTES = 8 * 1024 * 1024
-MAX_RECONCILIATION_UPLOAD_BYTES = 8 * 1024 * 1024
+MAX_RECONCILIATION_UPLOAD_BYTES = 20 * 1024 * 1024
 MAX_PRICING_AI_UPLOAD_BYTES = 10 * 1024 * 1024
 UPLOAD_LIMIT_MB_TO_BYTES = 1024 * 1024
 UPLOAD_LIMIT_DEFAULTS_MB = {
@@ -431,6 +438,13 @@ class HospitalityService:
 
     async def ensure_indexes(self) -> None:
         await self.repository.create_indexes()
+
+    @staticmethod
+    def _normalize_recommendation_mode(value: str | None) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized == RECOMMENDATION_MODE_FASTER:
+            return RECOMMENDATION_MODE_FASTER
+        return RECOMMENDATION_MODE_STANDARD
 
     @staticmethod
     def _coerce_upload_limit_mb(raw_value: object, *, fallback: int) -> int:
@@ -1368,7 +1382,9 @@ class HospitalityService:
         hotel_code: str | None,
         operator_code: str,
         season_label: str | None,
+        recommendation_mode: str | None = None,
     ) -> dict:
+        resolved_recommendation_mode = self._normalize_recommendation_mode(recommendation_mode)
         file_name = upload_file.filename or "pricing-contract.pdf"
         content = await upload_file.read()
         upload_limits = await self._get_effective_upload_limits_bytes()
@@ -1403,6 +1419,7 @@ class HospitalityService:
             operator_code=operator_code.strip().upper(),
             season_label=season_label,
             baseline_recommendation=heuristic_recommendation,
+            recommendation_mode=resolved_recommendation_mode,
         )
         recommendation = self._merge_content_recommendation(
             ai_recommendation=ai_recommendation,
@@ -1437,6 +1454,7 @@ class HospitalityService:
         hotel_code: str | None,
         operator_code: str,
         season_label: str | None,
+        recommendation_mode: str | None = None,
     ) -> dict:
         # Backward-compatible alias. Recommendation now focuses on content/data mapping.
         return await self.ai_recommend_pricing_content(
@@ -1445,6 +1463,7 @@ class HospitalityService:
             hotel_code=hotel_code,
             operator_code=operator_code,
             season_label=season_label,
+            recommendation_mode=recommendation_mode,
         )
 
     async def ai_extract_pricing_contract(
@@ -3007,6 +3026,7 @@ class HospitalityService:
         operator_code: str,
         season_label: str | None,
         baseline_recommendation: dict,
+        recommendation_mode: str = RECOMMENDATION_MODE_STANDARD,
     ) -> tuple[dict, dict, str]:
         settings = get_settings()
         if not settings.openai_api_key:
@@ -3030,8 +3050,16 @@ class HospitalityService:
             base_url=configured_base_url or "https://api.openai.com/v1",
         )
 
-        text_window = text[:120000]
-        baseline_payload = json.dumps(baseline_recommendation, ensure_ascii=False)[:60000]
+        resolved_recommendation_mode = self._normalize_recommendation_mode(recommendation_mode)
+        if resolved_recommendation_mode == RECOMMENDATION_MODE_FASTER:
+            text_window_limit = FASTER_RECOMMEND_TEXT_WINDOW_CHARS
+            baseline_payload_limit = FASTER_RECOMMEND_BASELINE_WINDOW_CHARS
+        else:
+            text_window_limit = STANDARD_RECOMMEND_TEXT_WINDOW_CHARS
+            baseline_payload_limit = STANDARD_RECOMMEND_BASELINE_WINDOW_CHARS
+
+        text_window = text[:text_window_limit]
+        baseline_payload = json.dumps(baseline_recommendation, ensure_ascii=False)[:baseline_payload_limit]
         prompt = (
             f"Hotel code: {hotel_code}\n"
             f"Operator code: {operator_code}\n"

@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { APP_NAME } from "@/config/app";
-import { randomAvatarSeed, randomAvatarStyle } from "@/lib/avatar";
 import { useAuth } from "@/lib/auth";
 import { apiErrorMessage, notifyError, notifySuccess } from "@/lib/notify";
 import { scrubSensitiveQueryParams } from "@/lib/url-security";
@@ -76,8 +75,6 @@ export function LoginPage() {
         token: inviteToken.trim(),
         full_name: fullName.trim(),
         password: invitePassword,
-        avatar_seed: randomAvatarSeed(),
-        avatar_style: randomAvatarStyle(),
       });
       notifySuccess("Invitation accepted. Signed in successfully.");
       navigate("/app");

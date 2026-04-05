@@ -339,6 +339,7 @@ async def ai_recommend_pricing_content(
     hotel_code: str | None = Form(default=None),
     operator_code: str = Form(...),
     season_label: str | None = Form(default=None),
+    analysis_mode: Literal["standard", "faster"] = Form(default="standard"),
     _: dict = Depends(require_admin),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
@@ -349,6 +350,7 @@ async def ai_recommend_pricing_content(
         hotel_code=hotel_code,
         operator_code=operator_code,
         season_label=season_label,
+        recommendation_mode=analysis_mode,
     )
 
 

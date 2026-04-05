@@ -37,7 +37,7 @@ const FIELD_META: Array<{ key: UploadLimitFieldKey; label: string; description: 
 const FALLBACK_LIMITS: UploadLimitsUpdatePayload = {
   contract_mb: 10,
   promotion_mb: 8,
-  reconciliation_mb: 8,
+  reconciliation_mb: 20,
   pricing_ai_mb: 10,
 };
 

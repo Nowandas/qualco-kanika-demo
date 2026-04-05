@@ -2,13 +2,12 @@ import { Link2 } from "lucide-react";
 
 import type { UserRole } from "@/api/types";
 import { PageShell, SectionCard } from "@/components/app/page-shell";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { UserAvatar } from "@/components/ui/user-avatar";
 import { useUsersManagement } from "@/features/users/use-users-management";
-import { avatarUrl } from "@/lib/avatar";
 
 export function UsersPage() {
   const { users, loading, updateRole, toggleActive, generatePasswordResetLink } = useUsersManagement();
@@ -39,10 +38,7 @@ export function UsersPage() {
                 <TableRow key={user.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <Avatar>
-                        <AvatarImage src={avatarUrl(user.avatar_seed, user.avatar_style)} />
-                        <AvatarFallback>{user.full_name.slice(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
+                      <UserAvatar />
                       <div>
                         <p className="font-medium">{user.full_name}</p>
                         <p className="text-xs text-muted-foreground">{user.email}</p>
