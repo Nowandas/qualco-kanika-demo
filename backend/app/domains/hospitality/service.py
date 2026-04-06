@@ -3002,6 +3002,7 @@ class HospitalityService:
         client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=configured_base_url or "https://api.openai.com/v1",
+            timeout=None,
         )
 
         # fallback_offer can contain date objects from heuristic parsing.
@@ -3212,10 +3213,11 @@ class HospitalityService:
 
         selected_model = model.strip() if model and model.strip() else settings.openai_pricing_model
         configured_base_url = (settings.openai_base_url or "").strip()
-        client_kwargs: dict[str, str] = {
+        client_kwargs: dict[str, object] = {
             "api_key": settings.openai_api_key,
             # Always pass an explicit URL because OPENAI_BASE_URL can be present but blank in env files.
             "base_url": configured_base_url or "https://api.openai.com/v1",
+            "timeout": None,
         }
         client = AsyncOpenAI(**client_kwargs)
 
@@ -3344,6 +3346,7 @@ class HospitalityService:
         client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=configured_base_url or "https://api.openai.com/v1",
+            timeout=None,
         )
 
         text_window = text[:120000]
@@ -7839,6 +7842,7 @@ class HospitalityService:
         client = AsyncOpenAI(
             api_key=settings.openai_api_key,
             base_url=configured_base_url or "https://api.openai.com/v1",
+            timeout=None,
         )
 
         contract_context = {

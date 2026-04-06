@@ -8,9 +8,6 @@ import type {
 } from "@/api/types";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
-const RECOMMEND_CONTENT_TIMEOUT_MS = 120_000;
-const EXTRACT_PRICING_TIMEOUT_MS = 180_000;
-
 type AIPricingExtractParams = {
   file: File;
   hotelId?: string;
@@ -69,7 +66,6 @@ export function usePricingAiIngestion() {
 
       const response = await api.post<AIPricingContentRecommendation>("/hospitality/ai/pricing/recommend-content", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: RECOMMEND_CONTENT_TIMEOUT_MS,
       });
       setLastRecommendation(response.data);
       notifySuccess("Content mapping feedback generated.");
@@ -113,7 +109,6 @@ export function usePricingAiIngestion() {
 
       const response = await api.post<AIPricingExtractionRun>("/hospitality/ai/pricing/extract", formData, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: EXTRACT_PRICING_TIMEOUT_MS,
       });
 
       setLastExtraction(response.data);
