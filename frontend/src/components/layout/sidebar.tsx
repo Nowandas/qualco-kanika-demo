@@ -38,6 +38,7 @@ const navigationGroups: NavigationGroup[] = [
       { label: "Price Lists", to: "/app/price-lists", icon: CalendarDays },
       { label: "Pricing AI", to: "/app/pricing-ingestion", icon: Bot },
       { label: "Reconciliations", to: "/app/reconciliations", icon: FileSpreadsheet },
+      { label: "Reconciliations V2", to: "/app/reconciliations-v2", icon: GalleryVerticalEnd },
     ],
   },
   {

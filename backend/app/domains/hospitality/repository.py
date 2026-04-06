@@ -47,10 +47,13 @@ class HospitalityRepository:
         await self.reconciliation_imports.create_index([("hotel_id", 1), ("created_at", -1)])
         await self.reconciliation_imports.create_index([("contract_id", 1), ("created_at", -1)])
         await self.reconciliation_imports.create_index([("source_system", 1), ("created_at", -1)])
+        await self.reconciliation_imports.create_index([("ingestion_mode", 1), ("created_at", -1)])
         await self.reconciliation_reservations.create_index([("import_id", 1), ("stay_date", 1)])
         await self.reconciliation_reservations.create_index([("hotel_id", 1), ("stay_date", -1)])
         await self.reconciliation_reservations.create_index([("contract_id", 1), ("stay_date", -1)])
         await self.reconciliation_reservations.create_index([("contract_id", 1), ("reservation_unique_key", 1)])
+        await self.reconciliation_reservations.create_index([("contract_id", 1), ("reservation_group_key", 1)])
+        await self.reconciliation_reservations.create_index([("source_system", 1), ("created_at", -1)])
         await self.reconciliation_reservations.create_index([("room_type", 1), ("stay_date", -1)])
         await self.reconciliation_reservations.create_index([("created_at", -1)])
         await self.settings.create_index([("updated_at", -1)])
@@ -93,6 +96,33 @@ class HospitalityRepository:
         if not stored:
             raise RuntimeError("Upload limits settings could not be stored.")
         return serialize_document(stored)
+
+    async def delete_all_contract_related_data(self) -> dict:
+        contract_domain_collections = {
+            "hospitality_contracts": self.contracts,
+            "hospitality_contract_files": self.contract_files,
+            "hospitality_promotions": self.promotions,
+            "hospitality_rules": self.rules,
+            "hospitality_sync_runs": self.sync_runs,
+            "hospitality_validation_runs": self.validation_runs,
+            "hospitality_alerts": self.alerts,
+            "hospitality_ai_extractions": self.ai_extractions,
+            "hospitality_reconciliation_imports": self.reconciliation_imports,
+            "hospitality_reconciliation_reservations": self.reconciliation_reservations,
+        }
+        deleted_collections: dict[str, int] = {}
+        total_deleted_documents = 0
+
+        for name, collection in contract_domain_collections.items():
+            result = await collection.delete_many({})
+            deleted_count = int(result.deleted_count or 0)
+            deleted_collections[name] = deleted_count
+            total_deleted_documents += deleted_count
+
+        return {
+            "deleted_collections": deleted_collections,
+            "total_deleted_documents": total_deleted_documents,
+        }
 
     async def create_contract(self, data: dict) -> dict:
         result = await self.contracts.insert_one(self._mongo_compatible(data))
@@ -439,6 +469,49 @@ class HospitalityRepository:
 
         created = await self.reconciliation_imports.find_one({"_id": result.inserted_id})
         return serialize_document(created)
+
+    async def create_reconciliation_import_append(self, import_data: dict, reservation_lines: list[dict]) -> dict:
+        result = await self.reconciliation_imports.insert_one(self._mongo_compatible(import_data))
+        import_id = str(result.inserted_id)
+
+        if reservation_lines:
+            documents = []
+            for line in reservation_lines:
+                enriched = dict(line)
+                enriched["import_id"] = import_id
+                created_at = enriched.get("created_at")
+                if not isinstance(created_at, datetime):
+                    created_at = datetime.now(timezone.utc)
+                enriched.setdefault("updated_at", import_data.get("created_at") or created_at)
+                enriched.setdefault("created_at", created_at)
+                documents.append(self._mongo_compatible(enriched))
+            if documents:
+                await self.reconciliation_reservations.insert_many(documents, ordered=False)
+
+        created = await self.reconciliation_imports.find_one({"_id": result.inserted_id})
+        return serialize_document(created)
+
+    async def list_reconciliation_imports(
+        self,
+        *,
+        contract_id: str | None = None,
+        hotel_id: str | None = None,
+        source_system: str | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        query: dict = {}
+        if contract_id and contract_id.strip():
+            query["contract_id"] = contract_id.strip()
+        if hotel_id and hotel_id.strip():
+            query["hotel_id"] = hotel_id.strip()
+        if source_system and source_system.strip():
+            query["source_system"] = source_system.strip()
+
+        capped_limit = max(1, min(limit, 2000))
+        items: list[dict] = []
+        async for doc in self.reconciliation_imports.find(query).sort("created_at", -1).limit(capped_limit):
+            items.append(serialize_document(doc))
+        return items
 
     async def list_reconciliation_reservations(
         self,

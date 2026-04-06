@@ -49,6 +49,8 @@ const DEFAULT_FILTERS: PriceListFilters = {
   periodLabel: "all",
 };
 
+const DEFAULT_PROMOTION_BOOKING_DATE = "2025-08-10";
+
 function toMonthValue(input: Date): string {
   const year = input.getFullYear();
   const month = String(input.getMonth() + 1).padStart(2, "0");
@@ -212,6 +214,7 @@ export function usePriceListCalendar() {
   const [viewMode, setViewMode] = useState<PriceListViewMode>("month");
   const [monthValue, setMonthValue] = useState(toMonthValue(new Date()));
   const [referenceDateValue, setReferenceDateValue] = useState(toDateValue(now));
+  const [promotionBookingDateValue, setPromotionBookingDateValue] = useState(DEFAULT_PROMOTION_BOOKING_DATE);
   const [customStartDateValue, setCustomStartDateValue] = useState(toDateValue(new Date(now.getFullYear(), now.getMonth(), 1)));
   const [customEndDateValue, setCustomEndDateValue] = useState(toDateValue(now));
   const [loadingContracts, setLoadingContracts] = useState(true);
@@ -305,7 +308,7 @@ export function usePriceListCalendar() {
     }
   }, [selectedHotelId]);
 
-  const loadMatrices = useCallback(async (contractId: string, promotionIds: string[]) => {
+  const loadMatrices = useCallback(async (contractId: string, promotionIds: string[], bookingDateValue: string) => {
     const controller = new AbortController();
     matrixAbortRef.current?.abort();
     matrixAbortRef.current = controller;
@@ -321,6 +324,9 @@ export function usePriceListCalendar() {
       const promoParams: Record<string, unknown> = { include_promotions: true };
       if (promotionIds.length) {
         promoParams.promotion_ids = promotionIds.join(",");
+      }
+      if (bookingDateValue.trim()) {
+        promoParams.booking_date = bookingDateValue.trim();
       }
 
       const [baseResponse, promoResponse] = await Promise.all([
@@ -411,7 +417,7 @@ export function usePriceListCalendar() {
       const matrixContractId = nextContractId || selectedContractId;
       if (matrixContractId) {
         await loadPromotions(matrixContractId);
-        await loadMatrices(matrixContractId, createdPromotionId ? [createdPromotionId] : selectedPromotionIds);
+        await loadMatrices(matrixContractId, createdPromotionId ? [createdPromotionId] : selectedPromotionIds, promotionBookingDateValue);
       } else {
         await loadContracts();
       }
@@ -422,7 +428,7 @@ export function usePriceListCalendar() {
     } finally {
       setIngestingPromotion(false);
     }
-  }, [ingestingPromotion, loadContracts, loadMatrices, loadPromotions, selectedContractId, selectedHotel, selectedHotelId, selectedPromotionIds]);
+  }, [ingestingPromotion, loadContracts, loadMatrices, loadPromotions, promotionBookingDateValue, selectedContractId, selectedHotel, selectedHotelId, selectedPromotionIds]);
 
   useEffect(() => {
     loadContracts().catch(() => null);
@@ -441,8 +447,8 @@ export function usePriceListCalendar() {
 
   useEffect(() => {
     if (!selectedContractId) return;
-    loadMatrices(selectedContractId, selectedPromotionIds).catch(() => null);
-  }, [loadMatrices, selectedContractId, selectedPromotionIds]);
+    loadMatrices(selectedContractId, selectedPromotionIds, promotionBookingDateValue).catch(() => null);
+  }, [loadMatrices, promotionBookingDateValue, selectedContractId, selectedPromotionIds]);
 
   useEffect(() => {
     return () => {
@@ -594,10 +600,10 @@ export function usePriceListCalendar() {
     if (selectedContractId) {
       await Promise.all([
         loadPromotions(selectedContractId),
-        loadMatrices(selectedContractId, selectedPromotionIds),
+        loadMatrices(selectedContractId, selectedPromotionIds, promotionBookingDateValue),
       ]);
     }
-  }, [loadContracts, loadMatrices, loadPromotions, selectedContractId, selectedPromotionIds]);
+  }, [loadContracts, loadMatrices, loadPromotions, promotionBookingDateValue, selectedContractId, selectedPromotionIds]);
 
   return {
     contracts,
@@ -621,6 +627,8 @@ export function usePriceListCalendar() {
     setMonthValue,
     referenceDateValue,
     setReferenceDateValue,
+    promotionBookingDateValue,
+    setPromotionBookingDateValue,
     customStartDateValue,
     setCustomStartDateValue,
     customEndDateValue,

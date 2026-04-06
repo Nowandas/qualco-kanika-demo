@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, PanelLeft, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, LogOut, PanelLeft, SlidersHorizontal, Trash2 } from "lucide-react";
 import { Outlet, useNavigate } from "react-router-dom";
 
 import { AppBreadcrumb } from "@/components/layout/app-breadcrumb";
+import { ContractDataCleanupModal } from "@/components/layout/contract-data-cleanup-modal";
 import { ProfileEditModal } from "@/components/layout/profile-edit-modal";
 import { Sidebar } from "@/components/layout/sidebar";
 import { UploadLimitsSettingsModal } from "@/components/layout/upload-limits-settings-modal";
@@ -17,6 +18,7 @@ export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [limitsModalOpen, setLimitsModalOpen] = useState(false);
+  const [cleanupModalOpen, setCleanupModalOpen] = useState(false);
   const [profileEditModalOpen, setProfileEditModalOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -156,21 +158,39 @@ export function AppLayout() {
                     </button>
 
                     {user?.role === "admin" ? (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="group flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left hover:bg-accent/80 hover:text-accent-foreground"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          setLimitsModalOpen(true);
-                        }}
-                      >
-                        <SlidersHorizontal className="mt-0.5 h-4 w-4 text-muted-foreground transition group-hover:text-foreground" />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium leading-none">Settings</span>
-                          <span className="mt-1 block text-xs text-muted-foreground">Manage upload limits and controls</span>
-                        </span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="group flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left hover:bg-accent/80 hover:text-accent-foreground"
+                          onClick={() => {
+                            setProfileMenuOpen(false);
+                            setLimitsModalOpen(true);
+                          }}
+                        >
+                          <SlidersHorizontal className="mt-0.5 h-4 w-4 text-muted-foreground transition group-hover:text-foreground" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium leading-none">Settings</span>
+                            <span className="mt-1 block text-xs text-muted-foreground">Manage upload limits and controls</span>
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="group flex w-full items-start gap-2.5 rounded-xl px-3 py-2.5 text-left text-rose-700 hover:bg-rose-50 hover:text-rose-900"
+                          onClick={() => {
+                            setProfileMenuOpen(false);
+                            setCleanupModalOpen(true);
+                          }}
+                        >
+                          <Trash2 className="mt-0.5 h-4 w-4 text-rose-600 transition group-hover:text-rose-700" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium leading-none">Clean contract data</span>
+                            <span className="mt-1 block text-xs text-rose-600/90">Delete all contract-related hospitality data</span>
+                          </span>
+                        </button>
+                      </>
                     ) : null}
 
                     <button
@@ -200,6 +220,7 @@ export function AppLayout() {
         </div>
       </div>
       <UploadLimitsSettingsModal open={limitsModalOpen} onClose={() => setLimitsModalOpen(false)} />
+      <ContractDataCleanupModal open={cleanupModalOpen} onClose={() => setCleanupModalOpen(false)} />
       <ProfileEditModal
         open={profileEditModalOpen}
         user={user}

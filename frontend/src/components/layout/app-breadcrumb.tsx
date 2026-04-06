@@ -20,6 +20,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/app/price-lists": "Price Lists",
   "/app/pricing-ingestion": "Pricing AI",
   "/app/reconciliations": "Reconciliations",
+  "/app/reconciliations-v2": "Reconciliations V2",
   "/app/demo-documentation": "Demo Documentation",
   "/app/demo-documentation/overview": "Overview",
   "/app/demo-documentation/business": "Business",

@@ -15,6 +15,7 @@ import { PasswordResetPage } from "@/pages/password-reset-page";
 import { PriceListsCalendarPage } from "@/pages/price-lists-calendar-page";
 import { PricingIngestionPage } from "@/pages/pricing-ingestion-page";
 import { ReconciliationsPage } from "@/pages/reconciliations-page";
+import { ReconciliationsV2Page } from "@/pages/reconciliations-v2-page";
 import { UsersPage } from "@/pages/users-page";
 
 function GenericErrorFallback({ message }: { message: string }) {
@@ -114,6 +115,7 @@ const router = createBrowserRouter(
         { path: "price-lists", element: <PriceListsCalendarPage /> },
         { path: "pricing-ingestion", element: <PricingIngestionPage /> },
         { path: "reconciliations", element: <ReconciliationsPage /> },
+        { path: "reconciliations-v2", element: <ReconciliationsV2Page /> },
         { path: "demo-documentation", element: <Navigate to="/app/demo-documentation/overview" replace /> },
         { path: "demo-documentation/overview", element: <DemoDocumentationPage section="overview" /> },
         { path: "demo-documentation/business", element: <DemoDocumentationPage section="business" /> },

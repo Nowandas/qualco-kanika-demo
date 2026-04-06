@@ -20,6 +20,15 @@ class UploadLimitsUpdateRequest(BaseModel):
     pricing_ai_mb: int = Field(ge=1, le=100)
 
 
+class ContractDataCleanupRead(BaseModel):
+    scope: str = "hospitality_contract_domain"
+    deleted_collections: dict[str, int] = Field(default_factory=dict)
+    total_deleted_documents: int = 0
+    preserved_collections: list[str] = Field(default_factory=list)
+    deleted_by_user_id: str
+    deleted_at: datetime
+
+
 class ContractExtraction(BaseModel):
     room_types: list[str] = Field(default_factory=list)
     seasonal_periods: list[str] = Field(default_factory=list)
@@ -73,6 +82,7 @@ class PromotionOfferRead(BaseModel):
     arrival_end_date: date | None = None
     non_cumulative: bool | None = None
     combinability_note: str | None = None
+    promotion_category: str | None = None
     applicable_room_types: list[str] = Field(default_factory=list)
     applicable_board_types: list[str] = Field(default_factory=list)
     affected_contract_ids: list[str] = Field(default_factory=list)
@@ -260,6 +270,7 @@ class PriceListMatrixRead(BaseModel):
     age_buckets: list[str] = Field(default_factory=list)
     currencies: list[str] = Field(default_factory=list)
     include_promotions: bool = False
+    booking_date: date | None = None
     selected_promotion_ids: list[str] = Field(default_factory=list)
     applied_promotion_ids: list[str] = Field(default_factory=list)
     applied_promotion_names: list[str] = Field(default_factory=list)
@@ -273,6 +284,7 @@ class ValidationLineInput(BaseModel):
     contract_id: str
     room_type: str = Field(min_length=2, max_length=120)
     board_type: str = Field(min_length=1, max_length=80)
+    booking_date: date | None = None
     stay_date: date
     nights: int = Field(default=1, ge=1, le=60)
     pax_adults: int = Field(default=2, ge=1, le=10)
@@ -359,6 +371,7 @@ class ReconciliationImportRead(BaseModel):
     analysis_provider: Literal["openai"] | None = None
     analysis_model: str | None = None
     analysis_usage: dict[str, Any] = Field(default_factory=dict)
+    ingestion_mode: Literal["v1_replace", "v2_append"] | None = None
     line_count: int
     created_by_user_id: str
     created_at: datetime
@@ -375,8 +388,10 @@ class ReconciliationReservationRead(BaseModel):
     sheet_name: str | None = None
     source_system: str | None = None
     reservation_id: str
+    reservation_group_key: str | None = None
     room_type: str
     board_type: str
+    booking_date: date | None = None
     stay_date: date
     nights: int
     pax_adults: int
@@ -414,6 +429,7 @@ class ValidationLineResult(BaseModel):
     operator_code: str
     room_type: str
     board_type: str
+    booking_date: date | None = None
     stay_date: date
     nights: int = 1
     pax_adults: int = 2

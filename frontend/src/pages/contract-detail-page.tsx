@@ -33,6 +33,61 @@ function jsonSnippet(value: Record<string, unknown>, maxLength = 140): string {
   return `${serialized.slice(0, maxLength)}...`;
 }
 
+function parseDateOnly(value: unknown): Date | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const token = raw.includes("T") ? raw.slice(0, 10) : raw;
+  const parsed = new Date(`${token}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDateOnly(value: Date | null): string {
+  if (!value) return "open";
+  return value.toLocaleDateString();
+}
+
+function formatWindow(startDate: Date | null, endDate: Date | null): string {
+  if (!startDate && !endDate) return "-";
+  return `${formatDateOnly(startDate)} to ${formatDateOnly(endDate)}`;
+}
+
+function toMetadataString(metadata: Record<string, unknown>, key: string): string {
+  const value = metadata[key];
+  if (value == null) return "";
+  return String(value).trim();
+}
+
+function toMetadataNumber(metadata: Record<string, unknown>, key: string): number | null {
+  const value = metadata[key];
+  if (value == null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const parsed = Number(String(value).trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parsePercentFromExpression(expression: string): number | null {
+  const match = expression.match(/(\d{1,3}(?:\.\d{1,2})?)\s*%/);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isEarlyBookingRule(rule: PricingRule): boolean {
+  if (rule.rule_type !== "promotion") return false;
+  const metadata = (rule.metadata ?? {}) as Record<string, unknown>;
+  const category = toMetadataString(metadata, "promotion_category").toLowerCase();
+  if (category === "early_booking" || category === "early-booking" || category === "early booking") {
+    return true;
+  }
+  const haystack = [rule.name, rule.expression, toMetadataString(metadata, "offer_name"), toMetadataString(metadata, "description")]
+    .join(" ")
+    .toLowerCase();
+  return ["early booking", "early-booking", "earlybooking", "early bird", "early-bird", "earlybird"].some((token) =>
+    haystack.includes(token),
+  );
+}
+
 type DetailCardItemProps = {
   label: string;
   value: string;
@@ -152,6 +207,47 @@ export function ContractDetailPage() {
   }, [load]);
 
   const title = useMemo(() => contract?.file_name ?? "Contract Detail", [contract?.file_name]);
+
+  const earlyBookingRules = useMemo(() => {
+    return rules
+      .filter((rule) => isEarlyBookingRule(rule))
+      .map((rule) => {
+        const metadata = (rule.metadata ?? {}) as Record<string, unknown>;
+        const discount = toMetadataNumber(metadata, "discount_percent") ?? parsePercentFromExpression(rule.expression);
+        const bookingStartDate = parseDateOnly(toMetadataString(metadata, "booking_start_date"));
+        const bookingEndDate = parseDateOnly(toMetadataString(metadata, "booking_end_date"));
+        const stayStartDate =
+          parseDateOnly(toMetadataString(metadata, "arrival_start_date")) ?? parseDateOnly(toMetadataString(metadata, "start_date"));
+        const stayEndDate =
+          parseDateOnly(toMetadataString(metadata, "arrival_end_date")) ?? parseDateOnly(toMetadataString(metadata, "end_date"));
+        const hasBookingWindow = Boolean(bookingStartDate || bookingEndDate);
+        const hasStayWindow = Boolean(stayStartDate || stayEndDate);
+        const scope = toMetadataString(metadata, "scope") || "all";
+        const roomFilters = Array.isArray(metadata.applicable_room_types)
+          ? metadata.applicable_room_types.map((item) => String(item).trim()).filter(Boolean)
+          : [];
+        const boardFilters = Array.isArray(metadata.applicable_board_types)
+          ? metadata.applicable_board_types.map((item) => String(item).trim()).filter(Boolean)
+          : [];
+        const windowComplete = hasBookingWindow && hasStayWindow;
+
+        return {
+          id: rule.id,
+          name: rule.name,
+          isActive: rule.is_active,
+          discountPercent: discount,
+          bookingStartDate,
+          bookingEndDate,
+          stayStartDate,
+          stayEndDate,
+          windowComplete,
+          scope,
+          nonCumulative: Boolean(metadata.non_cumulative),
+          roomFilters,
+          boardFilters,
+        };
+      });
+  }, [rules]);
 
   const openUploadedFile = useCallback(async () => {
     if (!contract) {
@@ -300,6 +396,74 @@ export function ContractDetailPage() {
                         </TableCell>
                         <TableCell className="max-w-[20rem] text-xs">{rule.expression}</TableCell>
                         <TableCell className="max-w-[24rem] text-xs text-muted-foreground">{jsonSnippet(rule.metadata)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Early Booking Rules"
+            description="Early-booking discounts are applied only when BOTH booking date and stay dates fall inside the configured windows."
+          >
+            {earlyBookingRules.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No early-booking promotion rules were detected for this contract.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Rule</TableHead>
+                      <TableHead>Discount</TableHead>
+                      <TableHead>Booking Window</TableHead>
+                      <TableHead>Stay Window</TableHead>
+                      <TableHead>Window Status</TableHead>
+                      <TableHead>Scope</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {earlyBookingRules.map((rule) => (
+                      <TableRow key={rule.id}>
+                        <TableCell className="max-w-[20rem]">
+                          <p className="font-medium">{rule.name}</p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {!rule.isActive ? <Badge variant="muted">inactive</Badge> : null}
+                            {rule.nonCumulative ? <Badge variant="outline">non-cumulative</Badge> : null}
+                            {rule.roomFilters.length ? <Badge variant="outline">rooms: {rule.roomFilters.join(", ")}</Badge> : null}
+                            {rule.boardFilters.length ? <Badge variant="outline">boards: {rule.boardFilters.join(", ")}</Badge> : null}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {rule.discountPercent != null ? (
+                            <Badge
+                              variant="outline"
+                              className={
+                                Math.abs(rule.discountPercent - 10) <= 0.05
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : Math.abs(rule.discountPercent - 5) <= 0.05
+                                    ? "border-sky-200 bg-sky-50 text-sky-700"
+                                    : undefined
+                              }
+                            >
+                              {rule.discountPercent}%
+                            </Badge>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell>{formatWindow(rule.bookingStartDate, rule.bookingEndDate)}</TableCell>
+                        <TableCell>{formatWindow(rule.stayStartDate, rule.stayEndDate)}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={rule.windowComplete ? "outline" : "danger"}
+                            className={rule.windowComplete ? "border-emerald-200 bg-emerald-50 text-emerald-700" : undefined}
+                          >
+                            {rule.windowComplete ? "Complete (booking + stay)" : "Incomplete window"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{rule.scope}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

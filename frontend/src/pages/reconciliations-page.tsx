@@ -758,6 +758,7 @@ export function ReconciliationsPage() {
       contract_id: row.contract_id,
       room_type: row.room_type,
       board_type: row.board_type,
+      booking_date: row.booking_date ?? undefined,
       stay_date: row.stay_date,
       nights: row.nights,
       pax_adults: row.pax_adults,

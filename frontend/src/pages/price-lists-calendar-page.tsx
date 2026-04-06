@@ -18,7 +18,7 @@ function dayKey(day: Date): string {
 export function PriceListsCalendarPage() {
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [offerFile, setOfferFile] = useState<File | null>(null);
-  const [offerOperatorCode, setOfferOperatorCode] = useState("EASYJET");
+  const [offerOperatorCode, setOfferOperatorCode] = useState("JET2");
   const [contractSearch, setContractSearch] = useState("");
   const [selectedImpactContractIds, setSelectedImpactContractIds] = useState<string[]>([]);
 
@@ -42,6 +42,8 @@ export function PriceListsCalendarPage() {
     setMonthValue,
     referenceDateValue,
     setReferenceDateValue,
+    promotionBookingDateValue,
+    setPromotionBookingDateValue,
     customStartDateValue,
     setCustomStartDateValue,
     customEndDateValue,
@@ -205,6 +207,29 @@ export function PriceListsCalendarPage() {
                 Promotion: {lastPromotionIngest.promotion.offer_name} · {lastPromotionIngest.promotion.discount_percent ?? 0}% ·
                 {` `}impacted contracts: {lastPromotionIngest.impacted_contract_ids.length}
               </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant="outline">
+                  Category {lastPromotionIngest.promotion.promotion_category || "general"}
+                </Badge>
+                <Badge variant="outline">
+                  Booking {lastPromotionIngest.promotion.booking_start_date || "?"} to {lastPromotionIngest.promotion.booking_end_date || "?"}
+                </Badge>
+                <Badge variant="outline">
+                  Arrival {lastPromotionIngest.promotion.arrival_start_date || lastPromotionIngest.promotion.start_date || "?"} to{" "}
+                  {lastPromotionIngest.promotion.arrival_end_date || lastPromotionIngest.promotion.end_date || "?"}
+                </Badge>
+                <Badge variant="outline">Scope {lastPromotionIngest.promotion.scope || "all"}</Badge>
+              </div>
+              {lastPromotionIngest.promotion.applicable_room_types.length || lastPromotionIngest.promotion.applicable_board_types.length ? (
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {lastPromotionIngest.promotion.applicable_room_types.length ? (
+                    <Badge variant="outline">Rooms {lastPromotionIngest.promotion.applicable_room_types.join(", ")}</Badge>
+                  ) : null}
+                  {lastPromotionIngest.promotion.applicable_board_types.length ? (
+                    <Badge variant="outline">Boards {lastPromotionIngest.promotion.applicable_board_types.join(", ")}</Badge>
+                  ) : null}
+                </div>
+              ) : null}
               {lastPromotionIngest.contract_rule_updates.length ? (
                 <div className="mt-2 grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
                   {lastPromotionIngest.contract_rule_updates.map((item) => (
@@ -306,10 +331,22 @@ export function PriceListsCalendarPage() {
               />
               Show promotion-adjusted price lists
             </label>
+            <div className="space-y-1.5">
+              <Label className="text-xs uppercase tracking-[0.04em] text-muted-foreground">Promotion booking date context</Label>
+              <Input
+                type="date"
+                value={promotionBookingDateValue}
+                onChange={(event) => setPromotionBookingDateValue(event.target.value)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Booking-window promotions apply only when this date is inside the promotion booking range.
+              </p>
+            </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <Badge variant="outline">promotions {promotions.length}</Badge>
               <Badge variant="outline">active filters {selectedPromotionIds.length || "all"}</Badge>
               <Badge variant="outline">changed entries {changedEntryCount}</Badge>
+              <Badge variant="outline">booking date {matrix?.booking_date || promotionBookingDateValue || "-"}</Badge>
               <Badge variant="outline">{rangeLabel}</Badge>
               <Badge variant="outline">days {days.length}</Badge>
               {loadingPromotions ? <Badge variant="outline">loading promotions...</Badge> : null}
@@ -341,7 +378,10 @@ export function PriceListsCalendarPage() {
                             {promotion.offer_name} ({promotion.discount_percent ?? 0}%)
                           </span>
                           <span className="text-muted-foreground">
+                            {promotion.promotion_category ? `${promotion.promotion_category} · ` : ""}
                             arrival {promotion.arrival_start_date ?? promotion.start_date ?? "?"} to {promotion.arrival_end_date ?? promotion.end_date ?? "?"}
+                            {" · booking "}
+                            {promotion.booking_start_date ?? "?"} to {promotion.booking_end_date ?? "?"}
                           </span>
                         </span>
                       </label>

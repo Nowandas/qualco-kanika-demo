@@ -119,6 +119,7 @@ export interface PromotionOffer {
   arrival_end_date?: string | null;
   non_cumulative?: boolean | null;
   combinability_note?: string | null;
+  promotion_category?: string | null;
   applicable_room_types: string[];
   applicable_board_types: string[];
   affected_contract_ids: string[];
@@ -266,6 +267,7 @@ export interface PriceListMatrix {
   age_buckets: string[];
   currencies: string[];
   include_promotions?: boolean;
+  booking_date?: string | null;
   selected_promotion_ids?: string[];
   applied_promotion_ids?: string[];
   applied_promotion_names?: string[];
@@ -292,6 +294,7 @@ export interface ValidationLineInput {
   contract_id: string;
   room_type: string;
   board_type: string;
+  booking_date?: string | null;
   stay_date: string;
   nights: number;
   pax_adults: number;
@@ -307,6 +310,7 @@ export interface ValidationLineResult {
   operator_code: string;
   room_type: string;
   board_type: string;
+  booking_date?: string | null;
   stay_date: string;
   nights: number;
   pax_adults: number;
@@ -457,6 +461,7 @@ export interface ReconciliationImport {
   analysis_provider?: "openai" | null;
   analysis_model?: string | null;
   analysis_usage?: Record<string, number>;
+  ingestion_mode?: "v1_replace" | "v2_append" | null;
   line_count: number;
   created_by_user_id: string;
   created_at: string;
@@ -473,8 +478,10 @@ export interface ReconciliationReservation {
   sheet_name?: string | null;
   source_system?: string | null;
   reservation_id: string;
+  reservation_group_key?: string | null;
   room_type: string;
   board_type: string;
+  booking_date?: string | null;
   stay_date: string;
   nights: number;
   pax_adults: number;

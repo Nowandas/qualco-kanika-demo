@@ -44,6 +44,34 @@ BOARD_TYPE_LOOKUP = {
     "all inclusive": "AI",
 }
 
+ROOM_MATCH_CANONICAL_REPLACEMENTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(
+            r"\bseafront\b|\bsea\s*front\b|\bfront\s+sea(?:\s+view)?\b|\bfrontal\s+sea(?:\s+view)?\b|\bsea\s+facing\b",
+            flags=re.IGNORECASE,
+        ),
+        "sea view",
+    ),
+    (
+        re.compile(r"\bside\s+sea(?:\s+view)?\b|\bsea\s+side(?:\s+view)?\b", flags=re.IGNORECASE),
+        "side sea view",
+    ),
+    (
+        re.compile(r"\binland(?:\s+view)?\b|\bland\s+view\b", flags=re.IGNORECASE),
+        "land view",
+    ),
+)
+
+ROOM_MATCH_STOPWORDS = {
+    "room",
+    "with",
+    "the",
+    "and",
+    "type",
+    "category",
+    "accommodation",
+}
+
 ROOM_TYPE_PATTERNS = [
     r"standard(?:\s+double|\s+twin)?\s+room",
     r"superior(?:\s+double|\s+twin)?\s+room",
@@ -70,6 +98,20 @@ RECONCILIATION_HEADER_SYNONYMS: dict[str, tuple[str, ...]] = {
     "operator_code": ("operator", "tour operator", "to code", "operator code"),
     "room_type": ("room type", "room", "accommodation"),
     "board_type": ("board type", "board", "meal"),
+    "booking_date": (
+        "booking date",
+        "booking datetime",
+        "reservation date",
+        "reservation created",
+        "booked on",
+        "book date",
+        "date booked",
+        "booking created",
+        "created at",
+        "created on",
+        "issue date",
+        "issued at",
+    ),
     "check_in_date": ("check in", "check-in", "arrival date", "arrival", "start date"),
     "check_out_date": ("check out", "check-out", "departure date", "departure", "end date"),
     "stay_date": ("stay date", "arrival", "check in", "check-in", "date"),
@@ -79,6 +121,55 @@ RECONCILIATION_HEADER_SYNONYMS: dict[str, tuple[str, ...]] = {
     "actual_price": ("actual", "fidelio", "charged", "actual price", "amount", "price"),
     "contract_rate": ("contract rate", "contract price", "expected rate", "base rate"),
     "promo_code": ("promo", "offer", "promotion", "coupon"),
+    "status": (
+        "status",
+        "booking status",
+        "reservation status",
+        "res status",
+        "record status",
+        "booking state",
+        "reservation state",
+        "status code",
+        "is cancelled",
+        "is canceled",
+        "cancelled flag",
+        "canceled flag",
+        "cxl status",
+        "void status",
+        "no show status",
+    ),
+}
+
+RECONCILIATION_STATUS_COLUMN_HINTS = (
+    "status",
+    "state",
+    "cxl",
+    "cancel",
+    "void",
+    "no show",
+    "noshow",
+)
+
+RECONCILIATION_CANCELLED_STATUS_TOKENS = {
+    "cancelled",
+    "canceled",
+    "cancellation",
+    "cancelation",
+    "cancel",
+    "cxl",
+    "cxlled",
+    "void",
+    "voided",
+    "annulled",
+    "annulated",
+    "no show",
+    "noshow",
+    "did not arrive",
+    "didnt arrive",
+}
+
+RECONCILIATION_CANCELLED_STATUS_COMPACT_TOKENS = {
+    token.replace(" ", "") for token in RECONCILIATION_CANCELLED_STATUS_TOKENS
 }
 
 DEFAULT_AI_PRICING_SCHEMA: dict = {
@@ -209,6 +300,14 @@ DEFAULT_AI_PRICING_SCHEMA: dict = {
                     "discount_percent": {"type": "number"},
                     "start_date": {"type": "string"},
                     "end_date": {"type": "string"},
+                    "booking_start_date": {"type": ["string", "null"]},
+                    "booking_end_date": {"type": ["string", "null"]},
+                    "arrival_start_date": {"type": ["string", "null"]},
+                    "arrival_end_date": {"type": ["string", "null"]},
+                    "non_cumulative": {"type": ["boolean", "null"]},
+                    "scope": {"type": ["string", "null"]},
+                    "applicable_room_types": {"type": "array", "items": {"type": "string"}},
+                    "applicable_board_types": {"type": "array", "items": {"type": "string"}},
                 },
             },
         },
@@ -319,6 +418,11 @@ AI_RECONCILIATION_MAPPING_SCHEMA: dict = {
                     "operator_code": {"type": "string"},
                     "room_type": {"type": "string"},
                     "board_type": {"type": "string"},
+                    "status": {"type": ["string", "null"]},
+                    "reservation_status": {"type": ["string", "null"]},
+                    "booking_status": {"type": ["string", "null"]},
+                    "is_cancelled": {"type": ["boolean", "null"]},
+                    "booking_date": {"type": ["string", "null"]},
                     "check_in_date": {"type": ["string", "null"]},
                     "check_out_date": {"type": ["string", "null"]},
                     "stay_date": {"type": "string"},
@@ -390,15 +494,20 @@ CANONICAL_MAPPING_REQUIREMENTS = (
     "Output JSON MUST include these top-level keys: room_types, seasonal_pricing_periods, board_types, "
     "pricing_lines, extra_guest_rules, discounts, supplements, marketing_contributions, promotional_offers, notes. "
     "Use arrays for these entities; if a value is unknown use an empty array. For pricing_lines use adult_price "
-    "numeric values and for extra_guest_rules use percent_of_adult numeric values whenever available."
+    "numeric values and for extra_guest_rules use percent_of_adult numeric values whenever available. "
+    "For promotional_offers include discount_percent and date windows. For early-booking offers, capture both "
+    "booking_start_date/booking_end_date and arrival_start_date/arrival_end_date; if only one range is explicit in "
+    "the source, mirror it to both windows. Available board types are HB, BB, FB."
 )
 
 CANONICAL_RECONCILIATION_MAPPING_REQUIREMENTS = (
     "Map by semantic meaning, not by exact column names or fixed column order. "
     "The sheet structure can vary (different headers, merged cells, reordered columns, optional columns). "
     "Produce a header_mapping that links the canonical fields to the best matching source columns when possible. "
-    "Canonical fields are: reservation_id, room_type, board_type, stay_date, nights, pax_adults, pax_children, "
-    "actual_price, contract_rate, promo_code, hotel_code, operator_code. "
+    "Canonical fields are: reservation_id, room_type, board_type, booking_date, stay_date, nights, pax_adults, "
+    "pax_children, actual_price, contract_rate, promo_code, status, hotel_code, operator_code. "
+    "Map booking_date when a booking/reservation creation date exists (needed for early-booking eligibility). "
+    "If a status column exists, map it to status and EXCLUDE rows where status indicates cancelled/canceled/cxl/void/no-show. "
     "If a dedicated nights/LOS column exists, map it to nights. "
     "If nights is not explicitly available, map check_in_date and check_out_date and derive nights from date difference. "
     "Treat meal plan / board basis / catering basis as board_type. "
@@ -409,10 +518,10 @@ CANONICAL_RECONCILIATION_MAPPING_REQUIREMENTS = (
     "Never invent prices or reservation IDs; if actual_price is missing or not trustworthy, exclude that row."
 )
 
-MAX_CONTRACT_UPLOAD_BYTES = 10 * 1024 * 1024
-MAX_PROMOTION_UPLOAD_BYTES = 8 * 1024 * 1024
-MAX_RECONCILIATION_UPLOAD_BYTES = 8 * 1024 * 1024
-MAX_PRICING_AI_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_CONTRACT_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_PROMOTION_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_RECONCILIATION_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_PRICING_AI_UPLOAD_BYTES = 20 * 1024 * 1024
 UPLOAD_LIMIT_MB_TO_BYTES = 1024 * 1024
 UPLOAD_LIMIT_DEFAULTS_MB = {
     "contract": MAX_CONTRACT_UPLOAD_BYTES // UPLOAD_LIMIT_MB_TO_BYTES,
@@ -514,6 +623,23 @@ class HospitalityService:
             "pricing_ai_mb": int(stored.get("pricing_ai_mb") or pricing_ai_mb),
             "updated_at": stored.get("updated_at"),
             "updated_by_user_id": stored.get("updated_by_user_id"),
+        }
+
+    async def cleanup_contract_related_data(self, *, deleted_by_user_id: str) -> dict:
+        summary = await self.repository.delete_all_contract_related_data()
+        return {
+            "scope": "hospitality_contract_domain",
+            "deleted_collections": summary.get("deleted_collections", {}),
+            "total_deleted_documents": int(summary.get("total_deleted_documents") or 0),
+            "preserved_collections": [
+                "users",
+                "invitations",
+                "password_resets",
+                "hotels",
+                "hospitality_settings",
+            ],
+            "deleted_by_user_id": deleted_by_user_id,
+            "deleted_at": utcnow(),
         }
 
     async def _get_effective_upload_limits_bytes(self) -> dict[str, int]:
@@ -946,6 +1072,7 @@ class HospitalityService:
         contract_id: str,
         include_promotions: bool = False,
         promotion_ids: list[str] | None = None,
+        booking_date: date | None = None,
     ) -> dict:
         contract = await self.get_contract(contract_id)
         rules = await self.repository.list_rules(contract_id=contract["id"])
@@ -989,6 +1116,7 @@ class HospitalityService:
             entries, used_promotion_ids, used_promotion_names = self._apply_promotions_to_matrix_entries(
                 entries=entries,
                 promotions=promotions,
+                booking_date=booking_date,
             )
             applied_promotion_ids = sorted(used_promotion_ids)
             applied_promotion_names = sorted(used_promotion_names)
@@ -1022,6 +1150,7 @@ class HospitalityService:
             "age_buckets": age_buckets,
             "currencies": currencies,
             "include_promotions": include_promotions,
+            "booking_date": booking_date.isoformat() if booking_date else None,
             "selected_promotion_ids": selected_promotion_ids,
             "applied_promotion_ids": applied_promotion_ids,
             "applied_promotion_names": applied_promotion_names,
@@ -1070,6 +1199,7 @@ class HospitalityService:
             "arrival_end_date": parsed.get("arrival_end_date"),
             "non_cumulative": parsed.get("non_cumulative"),
             "combinability_note": parsed.get("combinability_note"),
+            "promotion_category": parsed.get("promotion_category"),
             "applicable_room_types": parsed.get("applicable_room_types", []),
             "applicable_board_types": parsed.get("applicable_board_types", []),
             "affected_contract_ids": [],
@@ -1204,6 +1334,7 @@ class HospitalityService:
             "arrival_end_date": merged_offer["arrival_end_date"],
             "non_cumulative": merged_offer["non_cumulative"],
             "combinability_note": merged_offer["combinability_note"],
+            "promotion_category": merged_offer["promotion_category"],
             "applicable_room_types": merged_offer["applicable_room_types"],
             "applicable_board_types": merged_offer["applicable_board_types"],
             "affected_contract_ids": affected_contract_ids,
@@ -1223,12 +1354,23 @@ class HospitalityService:
             promotion=created_promotion,
             contracts=target_contracts,
         )
+        category_label = str(created_promotion.get("promotion_category") or "").strip().lower()
+        if not category_label:
+            category_label = "early_booking" if self._is_early_booking_promotion(created_promotion) else "general"
+        booking_window = (
+            f"{created_promotion.get('booking_start_date') or '?'} to {created_promotion.get('booking_end_date') or '?'}"
+        )
+        arrival_window = (
+            f"{created_promotion.get('arrival_start_date') or created_promotion.get('start_date') or '?'} "
+            f"to {created_promotion.get('arrival_end_date') or created_promotion.get('end_date') or '?'}"
+        )
 
         return {
             "promotion": created_promotion,
             "analysis_summary": (
                 f"AI extracted promotion '{created_promotion.get('offer_name')}' "
                 f"({created_promotion.get('discount_percent') or 0}% discount) "
+                f"[{category_label}] booking window {booking_window}; arrival window {arrival_window}; "
                 f"for {len(affected_contract_ids)} contract(s)."
             ),
             "impacted_contract_ids": affected_contract_ids,
@@ -1353,7 +1495,12 @@ class HospitalityService:
         start_date = promotion.get("arrival_start_date") or promotion.get("start_date")
         end_date = promotion.get("arrival_end_date") or promotion.get("end_date")
         offer_name = str(promotion.get("offer_name") or "Promotion").strip() or "Promotion"
-        expression = f"if promotion active then discount {discount:.2f}%"
+        is_early_booking = self._is_early_booking_promotion(promotion)
+        expression = (
+            f"if booking_date and stay_date are within offer window then discount {discount:.2f}%"
+            if is_early_booking
+            else f"if promotion active then discount {discount:.2f}%"
+        )
         return {
             "contract_id": contract["id"],
             "hotel_id": contract.get("hotel_id"),
@@ -1376,6 +1523,7 @@ class HospitalityService:
                 "arrival_end_date": promotion.get("arrival_end_date"),
                 "applicable_room_types": promotion.get("applicable_room_types", []),
                 "applicable_board_types": promotion.get("applicable_board_types", []),
+                "promotion_category": "early_booking" if is_early_booking else "general",
             },
             "created_at": created_at,
             "updated_at": created_at,
@@ -1752,12 +1900,13 @@ class HospitalityService:
                 detail="No pricing rules found. Generate rules before sync.",
             )
 
-        promotions = await self.repository.list_promotions_for_contract(
+        raw_promotions = await self.repository.list_promotions_for_contract(
             operator_code=contract["operator_code"],
             hotel_code=contract["hotel_code"],
             hotel_id=contract.get("hotel_id"),
             contract_id=contract["id"],
         )
+        promotions = self._collect_effective_promotions(promotions=raw_promotions, rules=rules)
 
         now = utcnow()
         sync_payload = {
@@ -1816,6 +1965,8 @@ class HospitalityService:
     async def persist_reconciliation_import(self, payload: ReconciliationImportPersistRequest, created_by_user_id: str) -> dict:
         contract = await self.get_contract(payload.contract_id)
         now = utcnow()
+        normalized_source_system = str(payload.source_system or "").strip().lower() or None
+        normalized_reservation_id_column = str(payload.reservation_id_column or "").strip() or None
 
         reservations_by_unique_key: dict[str, dict] = {}
         for index, line in enumerate(payload.lines, start=1):
@@ -1823,6 +1974,7 @@ class HospitalityService:
             reservation_id = str(line_data.get("reservation_id") or "").strip() or f"AUTO-{payload.sheet_name}-{index}"
             room_type = str(line_data.get("room_type") or "").strip() or "Standard Room"
             board_type = self._normalize_board_type(str(line_data.get("board_type") or "").strip())
+            booking_date = self._coerce_optional_date(line_data.get("booking_date"))
             stay_date = self._coerce_date(line_data.get("stay_date"))
             nights = max(1, min(60, self._coerce_int(line_data.get("nights"), default=1)))
             pax_adults = max(1, min(10, self._coerce_int(line_data.get("pax_adults"), default=2)))
@@ -1833,6 +1985,7 @@ class HospitalityService:
             contract_rate = self._coerce_float(line_data.get("contract_rate"))
             promo_code = str(line_data.get("promo_code") or "").strip() or None
             unique_key = self._normalize_reservation_unique_key(reservation_id, payload.sheet_name, index)
+            group_key = self._normalize_reservation_group_key(reservation_id, payload.sheet_name, index)
 
             # Keep the last occurrence when duplicate IDs exist in one upload.
             reservations_by_unique_key[unique_key] = {
@@ -1842,12 +1995,14 @@ class HospitalityService:
                 "operator_code": contract["operator_code"],
                 "file_name": payload.file_name,
                 "sheet_name": payload.sheet_name,
-                "source_system": payload.source_system,
-                "reservation_id_column": payload.reservation_id_column,
+                "source_system": normalized_source_system,
+                "reservation_id_column": normalized_reservation_id_column,
                 "reservation_id": reservation_id,
+                "reservation_group_key": group_key,
                 "reservation_unique_key": unique_key,
                 "room_type": self._to_title_case(room_type),
                 "board_type": board_type,
+                "booking_date": booking_date,
                 "stay_date": stay_date,
                 "nights": nights,
                 "pax_adults": pax_adults,
@@ -1874,18 +2029,116 @@ class HospitalityService:
             "operator_code": contract["operator_code"],
             "file_name": payload.file_name,
             "sheet_name": payload.sheet_name,
-            "source_system": payload.source_system,
-            "reservation_id_column": payload.reservation_id_column,
+            "source_system": normalized_source_system,
+            "reservation_id_column": normalized_reservation_id_column,
             "mapping_summary": payload.mapping_summary,
             "analysis_provider": payload.analysis_provider,
             "analysis_model": payload.analysis_model,
             "analysis_usage": payload.analysis_usage,
+            "ingestion_mode": "v1_replace",
             "line_count": len(reservations),
             "created_by_user_id": created_by_user_id,
             "created_at": now,
         }
 
         return await self.repository.create_reconciliation_import(import_doc, reservations)
+
+    async def persist_reconciliation_import_v2(self, payload: ReconciliationImportPersistRequest, created_by_user_id: str) -> dict:
+        contract = await self.get_contract(payload.contract_id)
+        now = utcnow()
+        normalized_source_system = str(payload.source_system or "").strip().lower() or None
+        normalized_reservation_id_column = str(payload.reservation_id_column or "").strip() or None
+
+        reservations: list[dict] = []
+        for index, line in enumerate(payload.lines, start=1):
+            line_data = line.model_dump()
+            reservation_id = str(line_data.get("reservation_id") or "").strip() or f"AUTO-{payload.sheet_name}-{index}"
+            room_type = str(line_data.get("room_type") or "").strip() or "Standard Room"
+            board_type = self._normalize_board_type(str(line_data.get("board_type") or "").strip())
+            booking_date = self._coerce_optional_date(line_data.get("booking_date"))
+            stay_date = self._coerce_date(line_data.get("stay_date"))
+            nights = max(1, min(60, self._coerce_int(line_data.get("nights"), default=1)))
+            pax_adults = max(1, min(10, self._coerce_int(line_data.get("pax_adults"), default=2)))
+            pax_children = max(0, min(10, self._coerce_int(line_data.get("pax_children"), default=0)))
+            actual_price = self._coerce_float(line_data.get("actual_price"))
+            if actual_price is None:
+                continue
+
+            contract_rate = self._coerce_float(line_data.get("contract_rate"))
+            promo_code = str(line_data.get("promo_code") or "").strip() or None
+            unique_key = self._normalize_reservation_unique_key(reservation_id, payload.sheet_name, index)
+            group_key = self._normalize_reservation_group_key(reservation_id, payload.sheet_name, index)
+
+            reservations.append(
+                {
+                    "contract_id": contract["id"],
+                    "hotel_id": contract.get("hotel_id"),
+                    "hotel_code": contract["hotel_code"],
+                    "operator_code": contract["operator_code"],
+                    "file_name": payload.file_name,
+                    "sheet_name": payload.sheet_name,
+                    "source_system": normalized_source_system,
+                    "reservation_id_column": normalized_reservation_id_column,
+                    "reservation_id": reservation_id,
+                    "reservation_group_key": group_key,
+                    "reservation_unique_key": unique_key,
+                    "room_type": self._to_title_case(room_type),
+                    "board_type": board_type,
+                    "booking_date": booking_date,
+                    "stay_date": stay_date,
+                    "nights": nights,
+                    "pax_adults": pax_adults,
+                    "pax_children": pax_children,
+                    "actual_price": round(actual_price, 2),
+                    "contract_rate": round(contract_rate, 2) if contract_rate is not None else None,
+                    "promo_code": promo_code,
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            )
+
+        if not reservations:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No valid reservation lines were provided for persistence.",
+            )
+
+        import_doc = {
+            "contract_id": contract["id"],
+            "hotel_id": contract.get("hotel_id"),
+            "hotel_code": contract["hotel_code"],
+            "operator_code": contract["operator_code"],
+            "file_name": payload.file_name,
+            "sheet_name": payload.sheet_name,
+            "source_system": normalized_source_system,
+            "reservation_id_column": normalized_reservation_id_column,
+            "mapping_summary": payload.mapping_summary,
+            "analysis_provider": payload.analysis_provider,
+            "analysis_model": payload.analysis_model,
+            "analysis_usage": payload.analysis_usage,
+            "ingestion_mode": "v2_append",
+            "line_count": len(reservations),
+            "created_by_user_id": created_by_user_id,
+            "created_at": now,
+        }
+
+        return await self.repository.create_reconciliation_import_append(import_doc, reservations)
+
+    async def list_reconciliation_imports(
+        self,
+        *,
+        contract_id: str | None = None,
+        hotel_id: str | None = None,
+        source_system: str | None = None,
+        limit: int = 500,
+    ) -> list[dict]:
+        normalized_source = str(source_system or "").strip().lower() or None
+        return await self.repository.list_reconciliation_imports(
+            contract_id=contract_id,
+            hotel_id=hotel_id,
+            source_system=normalized_source,
+            limit=limit,
+        )
 
     async def list_reconciliation_reservations(
         self,
@@ -2072,12 +2325,13 @@ class HospitalityService:
 
         contract = await self.get_contract(contract_id)
         rules = await self.repository.list_rules(contract_id=contract["id"])
-        promotions = await self.repository.list_promotions_for_contract(
+        raw_promotions = await self.repository.list_promotions_for_contract(
             operator_code=contract["operator_code"],
             hotel_code=contract["hotel_code"],
             hotel_id=contract.get("hotel_id"),
             contract_id=contract["id"],
         )
+        promotions = self._collect_effective_promotions(promotions=raw_promotions, rules=rules)
 
         ai_payload = self._build_reconciliation_ai_payload(
             file_name=file_name,
@@ -2237,12 +2491,13 @@ class HospitalityService:
     async def validate_batch(self, payload: ValidationBatchRequest, created_by_user_id: str) -> dict:
         contract = await self.get_contract(payload.contract_id)
         rules = await self.repository.list_rules(contract_id=contract["id"])
-        promotions = await self.repository.list_promotions_for_contract(
+        raw_promotions = await self.repository.list_promotions_for_contract(
             operator_code=contract["operator_code"],
             hotel_code=contract["hotel_code"],
             hotel_id=contract.get("hotel_id"),
             contract_id=contract["id"],
         )
+        promotions = self._collect_effective_promotions(promotions=raw_promotions, rules=rules)
 
         if not rules:
             raise HTTPException(
@@ -2672,6 +2927,22 @@ class HospitalityService:
         if sentence_match:
             combinability_note = sentence_match.group(0).strip()
 
+        has_window_conjunction = bool(
+            (booking_start_date or booking_end_date)
+            and (arrival_start_date or arrival_end_date)
+        )
+        is_early_booking = has_window_conjunction or self._is_early_booking_offer(
+            offer_name=offer_name,
+            description=description,
+        )
+        if is_early_booking:
+            if not (booking_start_date or booking_end_date) and (arrival_start_date or arrival_end_date):
+                booking_start_date = arrival_start_date
+                booking_end_date = arrival_end_date
+            if not (arrival_start_date or arrival_end_date) and (booking_start_date or booking_end_date):
+                arrival_start_date = booking_start_date
+                arrival_end_date = booking_end_date
+
         applicable_room_types = sorted(
             {
                 self._to_title_case(match)
@@ -2702,6 +2973,7 @@ class HospitalityService:
             "applicable_room_types": applicable_room_types,
             "applicable_board_types": applicable_board_types,
             "scope": scope,
+            "promotion_category": "early_booking" if is_early_booking else "general",
         }
 
     async def _run_openai_promotion_extraction(
@@ -2741,6 +3013,9 @@ class HospitalityService:
             "Extract structured promotion terms from this hotel contracting email or document.\n"
             "Prioritize these fields: discount_percent, booking_start_date/booking_end_date, "
             "arrival_start_date/arrival_end_date, non_cumulative, and scope.\n"
+            "Promotions are additive overlays on top of contract base rates/rules (all other terms remain in force).\n"
+            "For early-booking offers, BOTH booking and arrival windows are required; if only one is explicit, "
+            "mirror it to both windows.\n"
             "If dates are ambiguous, still return best effort and set confidence accordingly.\n\n"
             f"Heuristic baseline:\n{baseline}\n\n"
             f"Promotion content:\n{text[:40000]}"
@@ -2874,9 +3149,28 @@ class HospitalityService:
         else:
             non_cumulative = bool(fallback_offer.get("non_cumulative", False))
 
+        offer_name = read_text("offer_name", default=fallback_name)
+        description = read_text("description", default=fallback_name)
+        has_window_conjunction = bool(
+            (booking_start_date or booking_end_date)
+            and (arrival_start_date or arrival_end_date)
+        )
+        is_early_booking = has_window_conjunction or self._is_early_booking_offer(
+            offer_name=offer_name,
+            description=description,
+            expression=f"{offer_name} {description}",
+        )
+        if is_early_booking:
+            if not (booking_start_date or booking_end_date) and (arrival_start_date or arrival_end_date):
+                booking_start_date = arrival_start_date
+                booking_end_date = arrival_end_date
+            if not (arrival_start_date or arrival_end_date) and (booking_start_date or booking_end_date):
+                arrival_start_date = booking_start_date
+                arrival_end_date = booking_end_date
+
         return {
-            "offer_name": read_text("offer_name", default=fallback_name),
-            "description": read_text("description", default=fallback_name),
+            "offer_name": offer_name,
+            "description": description,
             "discount_percent": round(discount, 2) if discount is not None and discount > 0 else None,
             "start_date": start_date,
             "end_date": end_date,
@@ -2889,6 +3183,7 @@ class HospitalityService:
             "applicable_room_types": applicable_room_types,
             "applicable_board_types": applicable_board_types,
             "scope": scope,
+            "promotion_category": "early_booking" if is_early_booking else "general",
         }
 
     async def _run_openai_structured_extraction(
@@ -2940,6 +3235,7 @@ class HospitalityService:
             "When available, set guest_type (adult/child/infant), guest_position (2nd/3rd...), age_min, age_max, "
             "and percent_of_adult.\n"
             "Capture exact numeric percentages and pricing values whenever present.\n"
+            "Available board types are HB, BB, FB.\n"
         )
         if instructions:
             prompt += f"\nAdditional mapping instructions:\n{instructions}\n"
@@ -3200,7 +3496,8 @@ class HospitalityService:
                 "suggested_mapping_instructions",
                 default=(
                     "Extract room_types, board_types, seasonal_pricing_periods, pricing_lines, extra_guest_rules, "
-                    "discounts, supplements, marketing_contributions, and promotional_offers."
+                    "discounts, supplements, marketing_contributions, and promotional_offers. "
+                    "Available board types are HB, BB, FB."
                 ),
             ),
             "database_mapping": database_mapping,
@@ -3364,13 +3661,72 @@ class HospitalityService:
                 discount = self._coerce_float(item.get("discount_percent"))
                 start_date = self._coerce_optional_date(item.get("start_date") or item.get("from_date"))
                 end_date = self._coerce_optional_date(item.get("end_date") or item.get("to_date"))
+                booking_start_date = self._coerce_optional_date(
+                    item.get("booking_start_date")
+                    or item.get("booking_from_date")
+                    or item.get("book_start_date")
+                )
+                booking_end_date = self._coerce_optional_date(
+                    item.get("booking_end_date")
+                    or item.get("booking_to_date")
+                    or item.get("book_end_date")
+                )
+                arrival_start_date = self._coerce_optional_date(
+                    item.get("arrival_start_date")
+                    or item.get("travel_start_date")
+                    or start_date
+                )
+                arrival_end_date = self._coerce_optional_date(
+                    item.get("arrival_end_date")
+                    or item.get("travel_end_date")
+                    or end_date
+                )
+
+                is_early_booking = self._is_early_booking_offer(
+                    offer_name=name,
+                    description=description,
+                    expression=str(item.get("expression") or ""),
+                )
+                if is_early_booking:
+                    if not (booking_start_date or booking_end_date) and (arrival_start_date or arrival_end_date):
+                        booking_start_date = arrival_start_date
+                        booking_end_date = arrival_end_date
+                    if not (arrival_start_date or arrival_end_date) and (booking_start_date or booking_end_date):
+                        arrival_start_date = booking_start_date
+                        arrival_end_date = booking_end_date
+
+                scope_raw = str(item.get("scope") or "").strip().lower()
+                scope = scope_raw if scope_raw in {"all", "selected_rooms", "selected_board_types"} else "all"
+                room_filters = sorted(
+                    {
+                        self._to_title_case(value)
+                        for value in self._coerce_mixed_items_to_text(item.get("applicable_room_types"))
+                        if value
+                    }
+                )
+                board_filters = sorted(
+                    {
+                        self._normalize_board_type(value)
+                        for value in self._coerce_mixed_items_to_text(item.get("applicable_board_types"))
+                        if value
+                    }
+                )
                 promotions.append(
                     {
                         "name": name,
                         "description": description,
                         "discount_percent": round(discount, 2) if discount is not None and discount > 0 else None,
-                        "start_date": start_date.isoformat() if start_date else None,
-                        "end_date": end_date.isoformat() if end_date else None,
+                        "start_date": arrival_start_date.isoformat() if arrival_start_date else (start_date.isoformat() if start_date else None),
+                        "end_date": arrival_end_date.isoformat() if arrival_end_date else (end_date.isoformat() if end_date else None),
+                        "booking_start_date": booking_start_date.isoformat() if booking_start_date else None,
+                        "booking_end_date": booking_end_date.isoformat() if booking_end_date else None,
+                        "arrival_start_date": arrival_start_date.isoformat() if arrival_start_date else None,
+                        "arrival_end_date": arrival_end_date.isoformat() if arrival_end_date else None,
+                        "non_cumulative": self._coerce_optional_bool(item.get("non_cumulative")),
+                        "scope": scope,
+                        "applicable_room_types": room_filters,
+                        "applicable_board_types": board_filters,
+                        "promotion_category": "early_booking" if is_early_booking else "general",
                     }
                 )
         normalized["promotional_offers"] = promotions
@@ -3845,17 +4201,72 @@ class HospitalityService:
                 if discount is None or discount <= 0:
                     continue
                 name = str(promo.get("name") or "Promotion").strip()
+                description = str(promo.get("description") or "").strip() or None
+
+                start_date = self._coerce_optional_date(promo.get("start_date"))
+                end_date = self._coerce_optional_date(promo.get("end_date"))
+                booking_start_date = self._coerce_optional_date(promo.get("booking_start_date"))
+                booking_end_date = self._coerce_optional_date(promo.get("booking_end_date"))
+                arrival_start_date = self._coerce_optional_date(promo.get("arrival_start_date") or start_date)
+                arrival_end_date = self._coerce_optional_date(promo.get("arrival_end_date") or end_date)
+
+                is_early_booking = self._is_early_booking_promotion(
+                    {
+                        **promo,
+                        "offer_name": name,
+                        "description": description,
+                    }
+                )
+                if is_early_booking:
+                    if not (booking_start_date or booking_end_date) and (arrival_start_date or arrival_end_date):
+                        booking_start_date = arrival_start_date
+                        booking_end_date = arrival_end_date
+                    if not (arrival_start_date or arrival_end_date) and (booking_start_date or booking_end_date):
+                        arrival_start_date = booking_start_date
+                        arrival_end_date = booking_end_date
+
+                scope_raw = str(promo.get("scope") or "").strip().lower()
+                scope = scope_raw if scope_raw in {"all", "selected_rooms", "selected_board_types"} else "all"
+                room_filters = sorted(
+                    {
+                        self._to_title_case(value)
+                        for value in self._coerce_mixed_items_to_text(promo.get("applicable_room_types"))
+                        if value
+                    }
+                )
+                board_filters = sorted(
+                    {
+                        self._normalize_board_type(value)
+                        for value in self._coerce_mixed_items_to_text(promo.get("applicable_board_types"))
+                        if value
+                    }
+                )
+
+                expression = (
+                    f"if booking_date and stay_date are within offer window then discount {discount:.2f}%"
+                    if is_early_booking
+                    else f"if promotion active then discount {discount:.2f}%"
+                )
                 payload = {
                     "name": name,
                     "rule_type": "promotion",
-                    "expression": f"if promotion active then discount {discount:.2f}%",
+                    "expression": expression,
                     "priority": 40,
                     "metadata": {
                         "offer_name": name,
-                        "description": promo.get("description"),
+                        "description": description,
                         "discount_percent": round(discount, 2),
-                        "start_date": promo.get("start_date"),
-                        "end_date": promo.get("end_date"),
+                        "start_date": arrival_start_date.isoformat() if arrival_start_date else (start_date.isoformat() if start_date else None),
+                        "end_date": arrival_end_date.isoformat() if arrival_end_date else (end_date.isoformat() if end_date else None),
+                        "booking_start_date": booking_start_date.isoformat() if booking_start_date else None,
+                        "booking_end_date": booking_end_date.isoformat() if booking_end_date else None,
+                        "arrival_start_date": arrival_start_date.isoformat() if arrival_start_date else None,
+                        "arrival_end_date": arrival_end_date.isoformat() if arrival_end_date else None,
+                        "scope": scope,
+                        "non_cumulative": bool(self._coerce_optional_bool(promo.get("non_cumulative"))),
+                        "applicable_room_types": room_filters,
+                        "applicable_board_types": board_filters,
+                        "promotion_category": "early_booking" if is_early_booking else "general",
                     },
                 }
                 if draft_mode:
@@ -4087,7 +4498,7 @@ class HospitalityService:
             "Treat this input as a tour-operator commercial terms contract. Extract room_types, board_types, "
             "seasonal_pricing_periods, pricing_lines, and extra_guest_rules with emphasis on occupancy logic and "
             "field-level mapping to persistence entities. For each extra_guest_rule include guest_type, guest_position, "
-            "age_min/age_max when present, and percent_of_adult numeric values."
+            "age_min/age_max when present, and percent_of_adult numeric values. Available board types are HB, BB, FB."
         )
         suggested_schema, suggested_schema_rationale = self._build_recommended_schema_for_contract(
             complexity_score=complexity_score
@@ -4255,10 +4666,18 @@ class HospitalityService:
                     offer_name = normalized
                     break
 
-            date_values = re.findall(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b", line_text)
-            start_date = self._parse_date_string(date_values[0]) if len(date_values) >= 1 else None
-            end_date = self._parse_date_string(date_values[1]) if len(date_values) >= 2 else None
-            key = f"{offer_name.lower()}|{percent:.2f}|{start_date}|{end_date}"
+            parsed_offer = self._extract_promotion_offer(line_text, fallback_name=offer_name)
+            start_date = self._coerce_optional_date(parsed_offer.get("start_date"))
+            end_date = self._coerce_optional_date(parsed_offer.get("end_date"))
+            booking_start_date = self._coerce_optional_date(parsed_offer.get("booking_start_date"))
+            booking_end_date = self._coerce_optional_date(parsed_offer.get("booking_end_date"))
+            arrival_start_date = self._coerce_optional_date(parsed_offer.get("arrival_start_date"))
+            arrival_end_date = self._coerce_optional_date(parsed_offer.get("arrival_end_date"))
+
+            key = (
+                f"{offer_name.lower()}|{percent:.2f}|{start_date}|{end_date}|"
+                f"{booking_start_date}|{booking_end_date}|{arrival_start_date}|{arrival_end_date}"
+            )
             if key in seen:
                 continue
             seen.add(key)
@@ -4270,6 +4689,10 @@ class HospitalityService:
                     "discount_percent": round(percent, 2),
                     "start_date": start_date.isoformat() if start_date else None,
                     "end_date": end_date.isoformat() if end_date else None,
+                    "booking_start_date": booking_start_date.isoformat() if booking_start_date else None,
+                    "booking_end_date": booking_end_date.isoformat() if booking_end_date else None,
+                    "arrival_start_date": arrival_start_date.isoformat() if arrival_start_date else None,
+                    "arrival_end_date": arrival_end_date.isoformat() if arrival_end_date else None,
                 }
             )
 
@@ -4393,6 +4816,46 @@ class HospitalityService:
             seasonal_items = seasonal_periods.get("items")
             if isinstance(seasonal_items, dict):
                 seasonal_items["required"] = ["label"]
+
+        promotional_offers = properties.get("promotional_offers")
+        if isinstance(promotional_offers, dict):
+            promo_items = promotional_offers.get("items")
+            if isinstance(promo_items, dict):
+                promo_items["required"] = ["name", "discount_percent"]
+                promo_properties = promo_items.get("properties")
+                if isinstance(promo_properties, dict):
+                    promo_properties["booking_start_date"] = {
+                        "type": ["string", "null"],
+                        "description": "Booking window start for early-booking offers (ISO date).",
+                    }
+                    promo_properties["booking_end_date"] = {
+                        "type": ["string", "null"],
+                        "description": "Booking window end for early-booking offers (ISO date).",
+                    }
+                    promo_properties["arrival_start_date"] = {
+                        "type": ["string", "null"],
+                        "description": "Stay/arrival window start for offer applicability (ISO date).",
+                    }
+                    promo_properties["arrival_end_date"] = {
+                        "type": ["string", "null"],
+                        "description": "Stay/arrival window end for offer applicability (ISO date).",
+                    }
+                    promo_properties["scope"] = {
+                        "type": ["string", "null"],
+                        "description": "Offer scope: all, selected_rooms, selected_board_types.",
+                    }
+                    promo_properties["non_cumulative"] = {
+                        "type": ["boolean", "null"],
+                        "description": "True when offer cannot be combined with other offers.",
+                    }
+                    promo_properties["applicable_room_types"] = {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    }
+                    promo_properties["applicable_board_types"] = {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    }
 
         if complexity_score >= 8:
             schema_rationale = (
@@ -4729,6 +5192,7 @@ class HospitalityService:
         self,
         entries: list[dict],
         promotions: list[dict],
+        booking_date: date | None = None,
     ) -> tuple[list[dict], set[str], set[str]]:
         if not entries or not promotions:
             return entries, set(), set()
@@ -4745,7 +5209,11 @@ class HospitalityService:
 
             applicable: list[dict] = []
             for promotion in promotions:
-                if self._promotion_applies_to_matrix_entry(promotion=promotion, entry=entry):
+                if self._promotion_applies_to_matrix_entry(
+                    promotion=promotion,
+                    entry=entry,
+                    booking_date=booking_date,
+                ):
                     applicable.append(promotion)
 
             if not applicable:
@@ -4812,7 +5280,7 @@ class HospitalityService:
 
         return output, used_promotion_ids, used_promotion_names
 
-    def _promotion_applies_to_matrix_entry(self, promotion: dict, entry: dict) -> bool:
+    def _promotion_applies_to_matrix_entry(self, promotion: dict, entry: dict, booking_date: date | None = None) -> bool:
         discount = self._coerce_float(promotion.get("discount_percent"))
         if discount is None or discount <= 0:
             return False
@@ -4830,14 +5298,7 @@ class HospitalityService:
             if board_lower and not any(token in board_lower for token in board_filters):
                 return False
 
-        promo_start = self._coerce_optional_date(
-            promotion.get("arrival_start_date")
-            or promotion.get("start_date")
-        )
-        promo_end = self._coerce_optional_date(
-            promotion.get("arrival_end_date")
-            or promotion.get("end_date")
-        )
+        promo_start, promo_end, booking_start_date, booking_end_date = self._resolve_promotion_window_dates(promotion)
         entry_start = self._coerce_optional_date(entry.get("start_date"))
         entry_end = self._coerce_optional_date(entry.get("end_date"))
 
@@ -4850,6 +5311,14 @@ class HospitalityService:
             if entry_start and promo_end and entry_start > promo_end:
                 return False
             if entry_end and promo_start and entry_end < promo_start:
+                return False
+
+        if booking_start_date or booking_end_date:
+            if booking_date is None:
+                return False
+            if booking_start_date and booking_date < booking_start_date:
+                return False
+            if booking_end_date and booking_date > booking_end_date:
                 return False
 
         return True
@@ -5482,7 +5951,20 @@ class HospitalityService:
         text = re.sub(r"([A-Z])([A-Z][a-z])", r"\1 \2", text)
         text = re.sub(r"([A-Za-z])(\d)", r"\1 \2", text)
         text = re.sub(r"(\d)([A-Za-z])", r"\1 \2", text)
-        return self._normalize_header_token(text)
+        token = self._normalize_header_token(text)
+        if not token:
+            return ""
+
+        for pattern, replacement in ROOM_MATCH_CANONICAL_REPLACEMENTS:
+            token = pattern.sub(replacement, token)
+        token = self._normalize_header_token(token)
+        if not token:
+            return ""
+
+        compact_parts = [part for part in token.split() if part and part not in ROOM_MATCH_STOPWORDS]
+        if compact_parts:
+            token = " ".join(compact_parts)
+        return token
 
     def _entry_matches_stay_date(self, entry: dict, stay_date: date) -> tuple[bool, int]:
         start_date = self._coerce_optional_date(entry.get("start_date"))
@@ -5593,6 +6075,228 @@ class HospitalityService:
             return best_fallback[1]
         return None
 
+    def _is_early_booking_offer(
+        self,
+        *,
+        offer_name: str | None = None,
+        description: str | None = None,
+        expression: str | None = None,
+    ) -> bool:
+        haystack = " ".join(
+            value
+            for value in [
+                str(offer_name or "").strip().lower(),
+                str(description or "").strip().lower(),
+                str(expression or "").strip().lower(),
+            ]
+            if value
+        )
+        if not haystack:
+            return False
+        return any(
+            marker in haystack
+            for marker in (
+                "early booking",
+                "early-booking",
+                "earlybooking",
+                "early bird",
+                "early-bird",
+                "earlybird",
+            )
+        )
+
+    def _has_promotion_booking_and_arrival_windows(self, promotion: dict | None) -> bool:
+        if not isinstance(promotion, dict):
+            return False
+        metadata = promotion.get("metadata")
+        metadata_map = metadata if isinstance(metadata, dict) else {}
+
+        booking_start = self._coerce_optional_date(
+            promotion.get("booking_start_date")
+            or metadata_map.get("booking_start_date")
+        )
+        booking_end = self._coerce_optional_date(
+            promotion.get("booking_end_date")
+            or metadata_map.get("booking_end_date")
+        )
+        arrival_start = self._coerce_optional_date(
+            promotion.get("arrival_start_date")
+            or promotion.get("start_date")
+            or metadata_map.get("arrival_start_date")
+            or metadata_map.get("start_date")
+        )
+        arrival_end = self._coerce_optional_date(
+            promotion.get("arrival_end_date")
+            or promotion.get("end_date")
+            or metadata_map.get("arrival_end_date")
+            or metadata_map.get("end_date")
+        )
+        return bool((booking_start or booking_end) and (arrival_start or arrival_end))
+
+    def _is_early_booking_promotion(self, promotion: dict | None) -> bool:
+        if not isinstance(promotion, dict):
+            return False
+        metadata = promotion.get("metadata")
+        metadata_map = metadata if isinstance(metadata, dict) else {}
+
+        category = str(
+            promotion.get("promotion_category")
+            or metadata_map.get("promotion_category")
+            or metadata_map.get("category")
+            or ""
+        ).strip().lower()
+        if category in {"early_booking", "early-booking", "early booking", "earlybird", "early_bird"}:
+            return True
+        if self._has_promotion_booking_and_arrival_windows(promotion):
+            return True
+
+        return self._is_early_booking_offer(
+            offer_name=str(promotion.get("offer_name") or promotion.get("name") or metadata_map.get("offer_name") or ""),
+            description=str(promotion.get("description") or metadata_map.get("description") or ""),
+            expression=str(promotion.get("expression") or ""),
+        )
+
+    def _resolve_promotion_window_dates(self, promotion: dict) -> tuple[date | None, date | None, date | None, date | None]:
+        arrival_start_date = self._coerce_optional_date(promotion.get("arrival_start_date") or promotion.get("start_date"))
+        arrival_end_date = self._coerce_optional_date(promotion.get("arrival_end_date") or promotion.get("end_date"))
+        booking_start_date = self._coerce_optional_date(promotion.get("booking_start_date"))
+        booking_end_date = self._coerce_optional_date(promotion.get("booking_end_date"))
+
+        if arrival_start_date and arrival_end_date and arrival_end_date < arrival_start_date:
+            arrival_start_date, arrival_end_date = arrival_end_date, arrival_start_date
+        if booking_start_date and booking_end_date and booking_end_date < booking_start_date:
+            booking_start_date, booking_end_date = booking_end_date, booking_start_date
+
+        if self._is_early_booking_promotion(promotion):
+            # Early-booking must be constrained by BOTH booking and stay windows.
+            # If source data provides only one range, mirror it to preserve deterministic behavior.
+            if not (booking_start_date or booking_end_date) and (arrival_start_date or arrival_end_date):
+                booking_start_date = arrival_start_date
+                booking_end_date = arrival_end_date
+            if not (arrival_start_date or arrival_end_date) and (booking_start_date or booking_end_date):
+                arrival_start_date = booking_start_date
+                arrival_end_date = booking_end_date
+
+        return arrival_start_date, arrival_end_date, booking_start_date, booking_end_date
+
+    def _collect_effective_promotions(self, *, promotions: list[dict], rules: list[dict]) -> list[dict]:
+        effective: list[dict] = []
+        seen_ids: set[str] = set()
+        seen_fingerprints: set[tuple] = set()
+
+        def add(candidate: dict | None) -> None:
+            normalized = self._normalize_effective_promotion(candidate)
+            if not normalized:
+                return
+
+            promotion_id = str(normalized.get("id") or "").strip()
+            fingerprint = self._promotion_fingerprint(normalized)
+            if promotion_id and promotion_id in seen_ids:
+                return
+            if fingerprint in seen_fingerprints:
+                return
+
+            if promotion_id:
+                seen_ids.add(promotion_id)
+            seen_fingerprints.add(fingerprint)
+            effective.append(normalized)
+
+        for promotion in promotions:
+            add(promotion)
+        for rule in rules:
+            add(self._promotion_from_rule(rule))
+
+        return effective
+
+    def _normalize_effective_promotion(self, promotion: dict | None) -> dict | None:
+        if not isinstance(promotion, dict):
+            return None
+        discount = self._coerce_float(promotion.get("discount_percent"))
+        if discount is None or discount <= 0:
+            return None
+
+        offer_name = str(promotion.get("offer_name") or promotion.get("name") or "").strip() or "Promotion"
+        arrival_start_date, arrival_end_date, booking_start_date, booking_end_date = self._resolve_promotion_window_dates(promotion)
+        is_early_booking = self._is_early_booking_promotion(promotion)
+        return {
+            **promotion,
+            "offer_name": offer_name,
+            "discount_percent": round(discount, 2),
+            "description": str(promotion.get("description") or "").strip() or None,
+            "start_date": arrival_start_date,
+            "end_date": arrival_end_date,
+            "booking_start_date": booking_start_date,
+            "booking_end_date": booking_end_date,
+            "arrival_start_date": arrival_start_date,
+            "arrival_end_date": arrival_end_date,
+            "applicable_room_types": promotion.get("applicable_room_types") or [],
+            "applicable_board_types": promotion.get("applicable_board_types") or [],
+            "scope": str(promotion.get("scope") or "all").strip() or "all",
+            "non_cumulative": bool(promotion.get("non_cumulative", False)),
+            "promotion_category": "early_booking" if is_early_booking else "general",
+        }
+
+    def _promotion_from_rule(self, rule: dict) -> dict | None:
+        if not isinstance(rule, dict):
+            return None
+        if str(rule.get("rule_type") or "").strip().lower() != "promotion":
+            return None
+        if not bool(rule.get("is_active", True)):
+            return None
+
+        metadata = rule.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        discount = self._coerce_float(metadata.get("discount_percent"))
+        if discount is None:
+            expression = str(rule.get("expression") or "")
+            match = re.search(r"(\d{1,3}(?:\.\d{1,2})?)\s*%", expression)
+            if match:
+                discount = self._coerce_float(match.group(1))
+        if discount is None or discount <= 0:
+            return None
+
+        rule_id = str(rule.get("id") or rule.get("_id") or "").strip()
+        promotion_id = str(metadata.get("promotion_id") or "").strip()
+        offer_name = str(metadata.get("offer_name") or rule.get("name") or "").strip() or "Promotion"
+
+        return {
+            "id": promotion_id or (f"rule:{rule_id}" if rule_id else None),
+            "offer_name": offer_name,
+            "description": str(metadata.get("description") or "").strip() or None,
+            "expression": str(rule.get("expression") or "").strip() or None,
+            "discount_percent": round(discount, 2),
+            "start_date": metadata.get("start_date"),
+            "end_date": metadata.get("end_date"),
+            "booking_start_date": metadata.get("booking_start_date"),
+            "booking_end_date": metadata.get("booking_end_date"),
+            "arrival_start_date": metadata.get("arrival_start_date"),
+            "arrival_end_date": metadata.get("arrival_end_date"),
+            "scope": metadata.get("scope"),
+            "non_cumulative": bool(metadata.get("non_cumulative", False)),
+            "applicable_room_types": metadata.get("applicable_room_types", []),
+            "applicable_board_types": metadata.get("applicable_board_types", []),
+            "promotion_category": metadata.get("promotion_category"),
+        }
+
+    def _promotion_fingerprint(self, promotion: dict) -> tuple:
+        room_filters = tuple(sorted(self._normalize_promotion_scope_values(promotion.get("applicable_room_types"))))
+        board_filters = tuple(sorted(self._normalize_promotion_scope_values(promotion.get("applicable_board_types"))))
+        return (
+            str(promotion.get("offer_name") or "").strip().lower(),
+            round(self._coerce_float(promotion.get("discount_percent")) or 0.0, 4),
+            str(promotion.get("booking_start_date") or ""),
+            str(promotion.get("booking_end_date") or ""),
+            str(promotion.get("arrival_start_date") or ""),
+            str(promotion.get("arrival_end_date") or ""),
+            str(promotion.get("start_date") or ""),
+            str(promotion.get("end_date") or ""),
+            bool(promotion.get("non_cumulative", False)),
+            room_filters,
+            board_filters,
+        )
+
     def _validate_single_line(
         self,
         line_data: dict,
@@ -5610,6 +6314,11 @@ class HospitalityService:
         pax_adults = max(1, int(line_data.get("pax_adults") or 2))
         actual_price = float(line_data.get("actual_price") or 0)
         stay_date = self._coerce_date(line_data.get("stay_date"))
+        booking_date = self._coerce_optional_date(
+            line_data.get("booking_date")
+            or line_data.get("reservation_date")
+            or line_data.get("booking_created_at")
+        )
 
         nightly_base_rates: list[dict] = []
         missing_base_dates: list[str] = []
@@ -5918,14 +6627,23 @@ class HospitalityService:
         applied_promotions: list[str] = []
         promotion_breakdown: list[dict] = []
         applicable_promotions: list[dict] = []
+        promotions_require_booking_date = False
+        booking_date_missing_for_promotion_check = False
         for promo in promotions:
             discount = float(promo.get("discount_percent") or 0)
             if discount <= 0:
                 continue
+            _, _, booking_start_date, booking_end_date = self._resolve_promotion_window_dates(promo)
+            requires_booking_date = bool(booking_start_date or booking_end_date)
+            if requires_booking_date:
+                promotions_require_booking_date = True
+                if booking_date is None:
+                    booking_date_missing_for_promotion_check = True
             if self._promotion_applies(
                 promo,
                 stay_date,
                 line_data.get("promo_code"),
+                booking_date=booking_date,
                 room_type=line_data.get("room_type"),
                 board_type=line_data.get("board_type"),
             ):
@@ -5994,6 +6712,10 @@ class HospitalityService:
                     "Missing daily rates in uploaded price list for this reservation period "
                     f"({preview})."
                 )
+        elif promotions_require_booking_date and booking_date_missing_for_promotion_check and not applied_promotions:
+            reason = (
+                f"{reason}. Booking date is missing, so early-booking windows could not be evaluated."
+            )
 
         sorted_sources = sorted(base_source_counts.items(), key=lambda item: item[0])
         if missing_base_dates:
@@ -6028,6 +6750,8 @@ class HospitalityService:
                 for item in board_supplement_adjustments
             )
             source_details = f"{source_details} Applied board supplement(s): {supplements_summary}."
+        if promotions_require_booking_date and booking_date_missing_for_promotion_check and not applied_promotions:
+            source_details = f"{source_details} Missing booking_date prevented booking-window promotion checks."
 
         return {
             "reservation_id": str(line_data.get("reservation_id")),
@@ -6035,6 +6759,7 @@ class HospitalityService:
             "operator_code": str(line_data.get("operator_code")),
             "room_type": str(line_data.get("room_type")),
             "board_type": str(line_data.get("board_type")),
+            "booking_date": booking_date.isoformat() if booking_date else None,
             "stay_date": stay_date.isoformat(),
             "nights": nights,
             "pax_adults": pax_adults,
@@ -6072,11 +6797,27 @@ class HospitalityService:
         promotion: dict,
         stay_date: date,
         promo_code: str | None,
+        booking_date: date | None = None,
         room_type: str | None = None,
         board_type: str | None = None,
     ) -> bool:
-        start_date = self._coerce_optional_date(promotion.get("arrival_start_date") or promotion.get("start_date"))
-        end_date = self._coerce_optional_date(promotion.get("arrival_end_date") or promotion.get("end_date"))
+        start_date, end_date, booking_start_date, booking_end_date = self._resolve_promotion_window_dates(promotion)
+        is_early_booking = self._is_early_booking_promotion(promotion)
+
+        # Early-booking must always evaluate both booking and stay windows.
+        if is_early_booking:
+            if not (booking_start_date or booking_end_date):
+                return False
+            if not (start_date or end_date):
+                return False
+
+        if booking_start_date or booking_end_date:
+            if booking_date is None:
+                return False
+            if booking_start_date and booking_date < booking_start_date:
+                return False
+            if booking_end_date and booking_date > booking_end_date:
+                return False
 
         if start_date and stay_date < start_date:
             return False
@@ -6096,7 +6837,9 @@ class HospitalityService:
             if board_lower and not any(token in board_lower for token in board_filters):
                 return False
 
-        if promo_code:
+        # For now, do not gate early-booking promotions by promo_code token matching.
+        # They are eligibility-based (booking/stay windows), not code-based.
+        if promo_code and not is_early_booking:
             promo_normalized = promo_code.strip().lower()
             offer_name = str(promotion.get("offer_name") or "").lower()
             return promo_normalized in offer_name
@@ -6499,6 +7242,108 @@ class HospitalityService:
             return best_value
         return None
 
+    def _reconciliation_column_looks_like_status(self, *, column_name: str, column_label: str) -> bool:
+        token_name = self._normalize_header_token(str(column_name).replace("_", " "))
+        token_label = self._normalize_header_token(column_label)
+        token = f"{token_name} {token_label}".strip()
+        if not token:
+            return False
+        if "policy" in token and "status" not in token and "state" not in token:
+            return False
+        return any(marker in token for marker in RECONCILIATION_STATUS_COLUMN_HINTS)
+
+    def _is_cancelled_reconciliation_status_value(self, value: object) -> bool:
+        token = self._normalize_header_token(value)
+        if not token:
+            return False
+        compact = token.replace(" ", "")
+
+        # Guard against explicit negation such as "not cancelled".
+        if any(negation in token for negation in ("not cancelled", "not canceled", "non cancelled", "non canceled")):
+            return False
+        if any(
+            phrase in token
+            for phrase in (
+                "cancellation policy",
+                "free cancellation",
+                "cancellation fee",
+                "cancellation charge",
+                "cancel fee",
+                "cancel charge",
+            )
+        ):
+            return False
+
+        if token in RECONCILIATION_CANCELLED_STATUS_TOKENS:
+            return True
+        if compact in RECONCILIATION_CANCELLED_STATUS_COMPACT_TOKENS:
+            return True
+
+        if token.startswith(("cancel", "cxl", "void", "annul")):
+            return True
+        if "no show" in token or "noshow" in compact:
+            return True
+        return False
+
+    def _is_cancelled_reconciliation_row_values(
+        self,
+        *,
+        row_values: dict[str, object],
+        resolved_header_mapping: dict[str, str],
+        column_label_by_key: dict[str, str],
+    ) -> bool:
+        explicit_status = self._pick_reconciliation_payload_value(
+            row_values=row_values,
+            resolved_header_mapping=resolved_header_mapping,
+            field_name="status",
+            column_label_by_key=column_label_by_key,
+        )
+        if self._is_cancelled_reconciliation_status_value(explicit_status):
+            return True
+
+        for column_key, raw_value in row_values.items():
+            if raw_value is None or not str(raw_value).strip():
+                continue
+            column_label = column_label_by_key.get(column_key, column_key)
+            if not self._reconciliation_column_looks_like_status(
+                column_name=column_key,
+                column_label=column_label,
+            ):
+                continue
+            if self._is_cancelled_reconciliation_status_value(raw_value):
+                return True
+        return False
+
+    def _is_cancelled_ai_reconciliation_row(self, item: dict) -> bool:
+        if not isinstance(item, dict):
+            return False
+
+        for bool_key in ("is_cancelled", "cancelled", "canceled", "is_voided", "voided"):
+            bool_value = self._coerce_optional_bool(item.get(bool_key))
+            if bool_value is True:
+                return True
+
+        for status_key in (
+            "status",
+            "reservation_status",
+            "booking_status",
+            "reservation_state",
+            "booking_state",
+            "status_code",
+        ):
+            if self._is_cancelled_reconciliation_status_value(item.get(status_key)):
+                return True
+
+        for key, value in item.items():
+            if value is None or not str(value).strip():
+                continue
+            if not self._reconciliation_column_looks_like_status(column_name=str(key), column_label=str(key)):
+                continue
+            if self._is_cancelled_reconciliation_status_value(value):
+                return True
+
+        return False
+
     def _reconciliation_header_looks_like_nights(
         self,
         *,
@@ -6628,6 +7473,99 @@ class HospitalityService:
 
         return None
 
+    def _infer_reconciliation_booking_date_from_row_dates(
+        self,
+        *,
+        row_values: dict[str, object],
+        resolved_header_mapping: dict[str, str] | None,
+        column_label_by_key: dict[str, str],
+        stay_date: date,
+    ) -> date | None:
+        if resolved_header_mapping:
+            mapped_booking_column = resolved_header_mapping.get("booking_date")
+            explicit_booking = self._coerce_optional_date(
+                row_values.get(mapped_booking_column) if mapped_booking_column else None
+            )
+            if explicit_booking:
+                return explicit_booking
+
+        booking_hints = (
+            "booking",
+            "booked",
+            "book date",
+            "date booked",
+            "reservation created",
+            "created",
+            "issued",
+            "issue",
+        )
+        stay_hints = (
+            "check in",
+            "check-in",
+            "check out",
+            "check-out",
+            "arrival",
+            "departure",
+            "stay",
+            "start",
+            "end",
+            "from",
+            "to",
+        )
+
+        scored_candidates: list[tuple[int, date]] = []
+        generic_candidates: list[tuple[date, str]] = []
+
+        for column_key, raw_value in row_values.items():
+            parsed_date = self._coerce_optional_date(raw_value)
+            if not parsed_date:
+                continue
+
+            header_text = column_label_by_key.get(column_key, column_key)
+            header_token = self._normalize_header_token(header_text)
+            key_token = self._normalize_header_token(column_key)
+            combined_token = f"{header_token} {key_token}".strip()
+
+            generic_candidates.append((parsed_date, combined_token))
+
+            score = 0
+            if any(hint in combined_token for hint in booking_hints):
+                score += 100
+            if "date" in combined_token or "time" in combined_token:
+                score += 10
+            if "created" in combined_token or "issued" in combined_token:
+                score += 10
+            if any(hint in combined_token for hint in stay_hints):
+                score -= 40
+            if score >= 60:
+                scored_candidates.append((score, parsed_date))
+
+        if scored_candidates:
+            max_score = max(item[0] for item in scored_candidates)
+            top_dates = [candidate_date for score, candidate_date in scored_candidates if score == max_score]
+            not_after_stay = [candidate_date for candidate_date in top_dates if candidate_date <= stay_date]
+            if not_after_stay:
+                return max(not_after_stay)
+            return min(top_dates)
+
+        not_after_stay = [
+            candidate_date
+            for candidate_date, token in generic_candidates
+            if candidate_date <= stay_date and not any(hint in token for hint in stay_hints)
+        ]
+        if not_after_stay:
+            return max(not_after_stay)
+
+        prior_dates = [candidate_date for candidate_date, _ in generic_candidates if candidate_date < stay_date]
+        if prior_dates:
+            return max(prior_dates)
+
+        same_or_before = [candidate_date for candidate_date, _ in generic_candidates if candidate_date <= stay_date]
+        if same_or_before:
+            return max(same_or_before)
+
+        return None
+
     def _build_reconciliation_lines_from_header_mapping(
         self,
         *,
@@ -6670,6 +7608,12 @@ class HospitalityService:
             row_values = {str(key): value for key, value in values.items()}
             if not any(value is not None and str(value).strip() for value in row_values.values()):
                 continue
+            if self._is_cancelled_reconciliation_row_values(
+                row_values=row_values,
+                resolved_header_mapping=resolved_header_mapping,
+                column_label_by_key=column_label_by_key,
+            ):
+                continue
 
             actual_price = self._coerce_float(
                 self._pick_reconciliation_payload_value(
@@ -6690,6 +7634,21 @@ class HospitalityService:
                     column_label_by_key=column_label_by_key,
                 )
             ) or datetime.now(timezone.utc).date()
+            booking_date = self._coerce_optional_date(
+                self._pick_reconciliation_payload_value(
+                    row_values=row_values,
+                    resolved_header_mapping=resolved_header_mapping,
+                    field_name="booking_date",
+                    column_label_by_key=column_label_by_key,
+                )
+            )
+            if booking_date is None:
+                booking_date = self._infer_reconciliation_booking_date_from_row_dates(
+                    row_values=row_values,
+                    resolved_header_mapping=resolved_header_mapping,
+                    column_label_by_key=column_label_by_key,
+                    stay_date=stay_date,
+                )
 
             reservation = ""
             if reservation_id_values:
@@ -6836,6 +7795,7 @@ class HospitalityService:
                     "contract_id": contract_id,
                     "room_type": self._to_title_case(room_type_raw),
                     "board_type": self._normalize_board_type(board_type_raw),
+                    "booking_date": booking_date,
                     "stay_date": stay_date,
                     "nights": nights,
                     "pax_adults": pax_adults,
@@ -6901,10 +7861,13 @@ class HospitalityService:
                 {
                     "offer_name": promo.get("offer_name"),
                     "discount_percent": promo.get("discount_percent"),
+                    "booking_start_date": promo.get("booking_start_date"),
+                    "booking_end_date": promo.get("booking_end_date"),
                     "arrival_start_date": promo.get("arrival_start_date") or promo.get("start_date"),
                     "arrival_end_date": promo.get("arrival_end_date") or promo.get("end_date"),
                     "applicable_room_types": promo.get("applicable_room_types", []),
                     "applicable_board_types": promo.get("applicable_board_types", []),
+                    "promotion_category": promo.get("promotion_category"),
                 }
                 for promo in promotions[:30]
             ],
@@ -6924,10 +7887,12 @@ class HospitalityService:
             "Normalize board_type to common codes where possible (RO/BB/HB/FB/AI).\n"
             "Use contract context to normalize room and board naming. Keep uncertainty low and avoid inventing values.\n"
             "Do not include rows without a usable actual_price.\n"
+            "If a reservation status column exists, map it to status and exclude cancelled/canceled/cxl/void/no-show rows.\n"
             "If reservation_id is missing, generate a stable synthetic value based on row number.\n"
             "stay_date must be ISO date (YYYY-MM-DD).\n\n"
             "If a dedicated nights/LOS column exists, map it to nights.\n"
             "If nights is not explicitly available, map check_in_date and check_out_date to allow deriving nights.\n\n"
+            "If booking/reservation creation date is available, map it to booking_date (ISO YYYY-MM-DD).\n\n"
             f"Source system hint: {source_system_text}\n\n"
             f"Contract context:\n{context_json}\n\n"
             f"Sheet payload:\n{payload_json}\n"
@@ -7036,6 +8001,8 @@ class HospitalityService:
                 break
             if not isinstance(item, dict):
                 continue
+            if self._is_cancelled_ai_reconciliation_row(item):
+                continue
 
             actual_price = self._coerce_float(item.get("actual_price") or item.get("amount") or item.get("price"))
             if actual_price is None:
@@ -7048,6 +8015,17 @@ class HospitalityService:
                 or item.get("check_in_date")
                 or item.get("date")
             ) or datetime.now(timezone.utc).date()
+            booking_date = self._coerce_optional_date(
+                item.get("booking_date")
+                or item.get("reservation_date")
+                or item.get("booked_on")
+                or item.get("booking_created_at")
+                or item.get("booking_datetime")
+                or item.get("date_booked")
+                or item.get("reservation_created_at")
+                or item.get("created_at")
+                or item.get("issue_date")
+            )
 
             row_hint = self._coerce_int(item.get("row_number"), default=index)
             reservation = ""
@@ -7086,6 +8064,7 @@ class HospitalityService:
                     "contract_id": contract_id,
                     "room_type": self._to_title_case(room_type_raw),
                     "board_type": self._normalize_board_type(board_type_raw),
+                    "booking_date": booking_date,
                     "stay_date": stay_date,
                     "nights": nights,
                     "pax_adults": pax_adults,
@@ -7178,6 +8157,7 @@ class HospitalityService:
             "actual_price": 9,
             "contract_rate": 10,
             "promo_code": 11,
+            "booking_date": 12,
         }
 
         extracted: list[dict] = []
@@ -7285,11 +8265,15 @@ class HospitalityService:
                 return row[fallback_index]
             return None
 
+        if self._is_cancelled_reconciliation_status_value(pick("status")):
+            return None
+
         actual_price = self._coerce_float(pick("actual_price"))
         if actual_price is None:
             return None
 
         stay_date = self._coerce_optional_date(pick("stay_date")) or datetime.now(timezone.utc).date()
+        booking_date = self._coerce_optional_date(pick("booking_date"))
         room_type = str(pick("room_type") or "").strip()
         board_type = self._normalize_board_type(str(pick("board_type") or "").strip())
 
@@ -7329,6 +8313,7 @@ class HospitalityService:
             "contract_id": contract_id,
             "room_type": self._to_title_case(room_type) if room_type else "Standard Room",
             "board_type": board_type,
+            "booking_date": booking_date,
             "stay_date": stay_date,
             "nights": nights,
             "pax_adults": pax_adults,
@@ -7363,6 +8348,15 @@ class HospitalityService:
         if not raw:
             raw = f"AUTO-{sheet_name}-{row_number}"
         normalized = re.sub(r"\s+", "", raw).upper()
+        return normalized[:220]
+
+    def _normalize_reservation_group_key(self, reservation_id: str, sheet_name: str, row_number: int) -> str:
+        raw = str(reservation_id or "").strip()
+        if not raw:
+            raw = f"AUTO-{sheet_name}-{row_number}"
+        normalized = re.sub(r"[^A-Za-z0-9]+", "", raw).upper()
+        if not normalized:
+            normalized = re.sub(r"\s+", "", raw).upper()
         return normalized[:220]
 
     def _coerce_int(self, value: object, default: int) -> int:
@@ -7440,6 +8434,21 @@ class HospitalityService:
                     return float(match.group(0))
                 except ValueError:
                     return None
+        return None
+
+    def _coerce_optional_bool(self, value: object) -> bool | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            token = value.strip().lower()
+            if token in {"true", "yes", "y", "1"}:
+                return True
+            if token in {"false", "no", "n", "0"}:
+                return False
         return None
 
     def _coerce_optional_date(self, value: object) -> date | None:

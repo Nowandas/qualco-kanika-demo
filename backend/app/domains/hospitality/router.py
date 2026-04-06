@@ -16,6 +16,7 @@ from app.domains.hospitality.schemas import (
     AIPricingPersistResponse,
     AlertRead,
     AlertResolveRequest,
+    ContractDataCleanupRead,
     ContractDocumentRead,
     ContractPathIngestionRequest,
     ContractPerformanceReportRow,
@@ -80,6 +81,15 @@ async def update_upload_limits(
         pricing_ai_mb=payload.pricing_ai_mb,
         updated_by_user_id=admin_user["id"],
     )
+
+
+@router.post("/admin/cleanup-contract-data", response_model=ContractDataCleanupRead)
+async def cleanup_contract_data(
+    admin_user: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    service = HospitalityService(db)
+    return await service.cleanup_contract_related_data(deleted_by_user_id=admin_user["id"])
 
 
 @router.post("/contracts/ingest", response_model=ContractDocumentRead)
@@ -212,6 +222,7 @@ async def get_contract_price_matrix(
     contract_id: str,
     include_promotions: bool = Query(default=False),
     promotion_ids: str | None = Query(default=None),
+    booking_date: date | None = Query(default=None),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ) -> dict:
     service = HospitalityService(db)
@@ -220,6 +231,7 @@ async def get_contract_price_matrix(
         contract_id=contract_id,
         include_promotions=include_promotions,
         promotion_ids=promotion_id_list,
+        booking_date=booking_date,
     )
 
 
@@ -419,6 +431,33 @@ async def persist_reconciliation_import(
 ) -> dict:
     service = HospitalityService(db)
     return await service.persist_reconciliation_import(payload=payload, created_by_user_id=admin_user["id"])
+
+
+@router.post("/reconciliations/v2/imports", response_model=ReconciliationImportRead)
+async def persist_reconciliation_import_v2(
+    payload: ReconciliationImportPersistRequest,
+    admin_user: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    service = HospitalityService(db)
+    return await service.persist_reconciliation_import_v2(payload=payload, created_by_user_id=admin_user["id"])
+
+
+@router.get("/reconciliations/imports", response_model=list[ReconciliationImportRead], dependencies=[Depends(require_admin)])
+async def list_reconciliation_imports(
+    contract_id: str | None = Query(default=None),
+    hotel_id: str | None = Query(default=None),
+    source_system: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> list[dict]:
+    service = HospitalityService(db)
+    return await service.list_reconciliation_imports(
+        contract_id=contract_id,
+        hotel_id=hotel_id,
+        source_system=source_system,
+        limit=limit,
+    )
 
 
 @router.get("/reconciliations/reservations", response_model=ReconciliationReservationListRead, dependencies=[Depends(require_admin)])
