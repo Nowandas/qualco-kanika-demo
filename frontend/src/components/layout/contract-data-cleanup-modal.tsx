@@ -110,10 +110,10 @@ export function ContractDataCleanupModal({ open, onClose }: Props) {
               Permanent action
             </div>
             <p className="text-xs">
-              This deletes contracts, contract files, rules, promotions, sync runs, validations, alerts, AI extractions, and reconciliation data.
+              This deletes hotels, contracts, contract files, rules, promotions, sync runs, validations, alerts, AI extractions, and reconciliation data.
             </p>
             <p className="mt-1 text-xs">
-              Preserved: users, invitations, password resets, hotels, and hospitality settings.
+              Preserved: users, invitations, password resets, and hospitality settings.
             </p>
           </div>
 

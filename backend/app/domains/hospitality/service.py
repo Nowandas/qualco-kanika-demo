@@ -635,7 +635,6 @@ class HospitalityService:
                 "users",
                 "invitations",
                 "password_resets",
-                "hotels",
                 "hospitality_settings",
             ],
             "deleted_by_user_id": deleted_by_user_id,

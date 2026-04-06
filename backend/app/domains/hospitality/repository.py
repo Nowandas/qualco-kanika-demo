@@ -99,6 +99,7 @@ class HospitalityRepository:
 
     async def delete_all_contract_related_data(self) -> dict:
         contract_domain_collections = {
+            "hotels": self.hotels,
             "hospitality_contracts": self.contracts,
             "hospitality_contract_files": self.contract_files,
             "hospitality_promotions": self.promotions,
