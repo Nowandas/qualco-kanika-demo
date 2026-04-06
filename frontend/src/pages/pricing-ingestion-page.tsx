@@ -75,7 +75,7 @@ const DEFAULT_SCHEMA = JSON.stringify(
   2,
 );
 
-const MODEL_OPTIONS = ["gpt-5.2", "gpt-5.4", "gpt-5.4-mini", "gpt-4.1", "gpt-4.1-mini"];
+const MODEL_OPTIONS = ["gpt-5.4", "gpt-5.4-mini", "gpt-5.2", "gpt-4.1", "gpt-4.1-mini"];
 
 function toPrettyJson(value: unknown): string {
   try {
@@ -133,7 +133,7 @@ export function PricingIngestionPage() {
 
   const [operatorCode, setOperatorCode] = useState("JET2");
   const [seasonLabel, setSeasonLabel] = useState("S25");
-  const [model, setModel] = useState("gpt-5.2");
+  const [model, setModel] = useState("gpt-5.4");
   const [mappingInstructions, setMappingInstructions] = useState(
     "Treat input as a tour-operator commercial terms contract. Extract room types, seasonal pricing periods, board types, pricing lines, extra guest pricing rules (including 2nd child / 3rd adult logic), discounts, supplements, marketing contributions and promotional offers. For each extra guest rule capture guest_type, guest_position, age_min/age_max (if present), and percent_of_adult. Available board types are HB, BB, FB.",
   );
