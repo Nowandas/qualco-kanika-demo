@@ -43,6 +43,11 @@ export interface InvitationCreateResult extends Invitation {
   token: string;
 }
 
+export interface InvitationTokenIssueResult extends Invitation {
+  token: string;
+  issued_at: string;
+}
+
 export interface PasswordResetLink {
   id: string;
   user_id: string;

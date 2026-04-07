@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, isRequestCancelled } from "@/api/client";
-import type { Invitation, InvitationCreateResult, UserRole } from "@/api/types";
+import type { Invitation, InvitationCreateResult, InvitationTokenIssueResult, UserRole } from "@/api/types";
 import { notifyError, notifySuccess } from "@/lib/notify";
 
 export type InvitationFormValues = {
@@ -17,6 +17,7 @@ function invitationLink(token: string) {
 export function useInvitationsManagement() {
   const [items, setItems] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [issuingTokenInvitationId, setIssuingTokenInvitationId] = useState<string | null>(null);
   const loadAbortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
@@ -84,11 +85,56 @@ export function useInvitationsManagement() {
     [copyText],
   );
 
+  const issueInvitationToken = useCallback(
+    async (invitationId: string) => {
+      if (!invitationId.trim()) {
+        return null;
+      }
+      setIssuingTokenInvitationId(invitationId);
+      try {
+        const response = await api.post<InvitationTokenIssueResult>(`/invitations/${encodeURIComponent(invitationId)}/issue-token`);
+        await load();
+        return response.data;
+      } catch (error) {
+        notifyError(error, "Could not issue a fresh invitation token.");
+        return null;
+      } finally {
+        setIssuingTokenInvitationId((current) => (current === invitationId ? null : current));
+      }
+    },
+    [load],
+  );
+
+  const copyInvitationTokenForInvitation = useCallback(
+    async (invitationId: string) => {
+      const issued = await issueInvitationToken(invitationId);
+      if (!issued) {
+        return;
+      }
+      await copyText(issued.token, "Invitation token copied.");
+    },
+    [copyText, issueInvitationToken],
+  );
+
+  const copyInvitationLinkForInvitation = useCallback(
+    async (invitationId: string) => {
+      const issued = await issueInvitationToken(invitationId);
+      if (!issued) {
+        return;
+      }
+      await copyText(invitationLink(issued.token), "Invitation link copied.");
+    },
+    [copyText, issueInvitationToken],
+  );
+
   return {
     items,
     loading,
+    issuingTokenInvitationId,
     createInvitation,
     copyInvitationToken,
     copyInvitationLink,
+    copyInvitationTokenForInvitation,
+    copyInvitationLinkForInvitation,
   };
 }

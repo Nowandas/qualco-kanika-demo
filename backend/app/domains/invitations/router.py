@@ -3,7 +3,12 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.database import get_db
 from app.domains.auth.dependencies import require_admin
-from app.domains.invitations.schemas import InvitationCreate, InvitationCreateResponse, InvitationRead
+from app.domains.invitations.schemas import (
+    InvitationCreate,
+    InvitationCreateResponse,
+    InvitationRead,
+    InvitationTokenIssueResponse,
+)
 from app.domains.invitations.service import InvitationService
 
 router = APIRouter(prefix="/invitations", tags=["invitations"])
@@ -23,3 +28,13 @@ async def create_invitation(
 ) -> dict:
     service = InvitationService(db)
     return await service.create_invitation(payload, created_by_user_id=admin_user["id"])
+
+
+@router.post("/{invitation_id}/issue-token", response_model=InvitationTokenIssueResponse)
+async def issue_invitation_token(
+    invitation_id: str,
+    _: dict = Depends(require_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+) -> dict:
+    service = InvitationService(db)
+    return await service.issue_invitation_token(invitation_id)

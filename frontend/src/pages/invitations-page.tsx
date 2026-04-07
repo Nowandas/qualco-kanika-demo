@@ -12,7 +12,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useInvitationsManagement } from "@/features/invitations/use-invitations-management";
 
 export function InvitationsPage() {
-  const { items, loading, createInvitation, copyInvitationToken, copyInvitationLink } = useInvitationsManagement();
+  const {
+    items,
+    loading,
+    issuingTokenInvitationId,
+    createInvitation,
+    copyInvitationToken,
+    copyInvitationLink,
+    copyInvitationTokenForInvitation,
+    copyInvitationLinkForInvitation,
+  } = useInvitationsManagement();
   const [email, setEmail] = useState("new.user@example.com");
   const [role, setRole] = useState<UserRole>("member");
   const [expiresInHours, setExpiresInHours] = useState("72");
@@ -98,7 +107,13 @@ export function InvitationsPage() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Active Invitations" description="Track invitation status with masked token hints.">
+      <SectionCard
+        title="Active Invitations"
+        description="Track invitation status and copy fresh token/link for any pending invitation."
+      >
+        <p className="mb-3 text-xs text-muted-foreground">
+          Copy actions issue a new token securely for the selected pending invitation.
+        </p>
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading invitations...</p>
         ) : (
@@ -109,6 +124,7 @@ export function InvitationsPage() {
                 <TableHead>Role</TableHead>
                 <TableHead>Token hint</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -119,6 +135,34 @@ export function InvitationsPage() {
                   <TableCell className="font-mono text-xs">{invitation.token_hint ?? "-"}</TableCell>
                   <TableCell>
                     {invitation.accepted_at ? <Badge>Accepted</Badge> : <Badge variant="muted">Pending</Badge>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {invitation.accepted_at ? (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    ) : (
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          disabled={issuingTokenInvitationId === invitation.id}
+                          onClick={() => copyInvitationTokenForInvitation(invitation.id)}
+                        >
+                          <Copy className="mr-1 h-3.5 w-3.5" />
+                          {issuingTokenInvitationId === invitation.id ? "Preparing..." : "Copy token"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                          disabled={issuingTokenInvitationId === invitation.id}
+                          onClick={() => copyInvitationLinkForInvitation(invitation.id)}
+                        >
+                          <Link2 className="mr-1 h-3.5 w-3.5" />
+                          {issuingTokenInvitationId === invitation.id ? "Preparing..." : "Copy link"}
+                        </Button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

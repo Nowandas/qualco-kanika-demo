@@ -56,6 +56,32 @@ class InvitationService:
                 invitation["token_hint"] = f"{raw_token[:6]}...{raw_token[-4:]}"
         return invitations
 
+    async def issue_invitation_token(self, invitation_id: str) -> dict:
+        invitation = await self.repository.get_by_id(invitation_id)
+        if not invitation:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+        if invitation.get("accepted_at") is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invitation already used")
+
+        expires_at = to_aware_utc(invitation["expires_at"])
+        if expires_at < utcnow():
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="Invitation expired")
+
+        raw_token = secrets.token_urlsafe(32)
+        token_hint = f"{raw_token[:6]}...{raw_token[-4:]}"
+        updated = await self.repository.rotate_token(
+            invitation_id,
+            token_hash=hash_one_time_token(raw_token),
+            token_hint=token_hint,
+        )
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invitation already used")
+
+        updated["token"] = raw_token
+        updated["issued_at"] = utcnow()
+        return updated
+
     async def accept_invitation(
         self,
         token: str,

@@ -1,5 +1,6 @@
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import ReturnDocument
 from pymongo.errors import OperationFailure
 
 from app.core.mongo_utils import serialize_document
@@ -30,6 +31,14 @@ class InvitationRepository:
             invitations.append(serialize_document(invite))
         return invitations
 
+    async def get_by_id(self, invitation_id: str) -> dict | None:
+        if not ObjectId.is_valid(invitation_id):
+            return None
+        invitation = await self.collection.find_one({"_id": ObjectId(invitation_id)})
+        if not invitation:
+            return None
+        return serialize_document(invitation)
+
     async def get_by_token(self, token: str) -> dict | None:
         token_hash = hash_one_time_token(token)
         invitation = await self.collection.find_one({"token_hash": token_hash})
@@ -54,3 +63,15 @@ class InvitationRepository:
             {"$set": {"accepted_at": accepted_at}},
         )
         return result.modified_count == 1
+
+    async def rotate_token(self, invitation_id: str, *, token_hash: str, token_hint: str) -> dict | None:
+        if not ObjectId.is_valid(invitation_id):
+            return None
+        updated = await self.collection.find_one_and_update(
+            {"_id": ObjectId(invitation_id), "accepted_at": None},
+            {"$set": {"token_hash": token_hash, "token_hint": token_hint}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if not updated:
+            return None
+        return serialize_document(updated)

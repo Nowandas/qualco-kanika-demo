@@ -25,3 +25,8 @@ class InvitationRead(BaseModel):
 
 class InvitationCreateResponse(InvitationRead):
     token: str
+
+
+class InvitationTokenIssueResponse(InvitationRead):
+    token: str
+    issued_at: datetime
