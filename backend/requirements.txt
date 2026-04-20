@@ -7,7 +7,7 @@ pydantic-settings==2.5.2
 # python-jose pulls rsa/pyasn1 transitively; no conflict-free pyasn1 fix pin is available with this stack yet.
 python-jose[cryptography]==3.4.0
 passlib==1.7.4
-email-validator==2.2.0
+email-validator==2.3.0
 python-multipart==0.0.22
 pypdf==6.9.2
 openpyxl==3.1.5
